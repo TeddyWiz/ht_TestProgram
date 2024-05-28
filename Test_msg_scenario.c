@@ -531,7 +531,7 @@ void dataFlash_displayMapSector()
 		//WDT_CLEAR;
 	}
 }
-void restSortMap(void)
+void resetSortMap(void)
 {
 	//sortMapdata
 	int i = 0, j=1;
@@ -597,13 +597,6 @@ void display_sector(char mode)
 	}
 }
 
-void display_sector_data(uint8 datapos)
-{
-	int i=0;
-	uint8 temp_sec, temp_unit;
-	temp_sec = datapos /5;
-	temp_unit = datapos % 5;
-}
 
 uint8 isLeapYear(int year) {
     return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
@@ -614,31 +607,29 @@ uint16 dateToDays(dataTimeS_t inDate)
 	uint8 daysInMonth[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
 	uint16 days = 0, temp = 0;
 	for (temp = 1; temp < inDate.year; temp++) {
-        days += isLeapYear(inDate.year + 2000) ? 366 : 365;
+        days += isLeapYear(temp + 2000) ? 366 : 365;
     }
-    
     // 올해가 윤년이면 2월의 일 수를 29일로 변경
     if (isLeapYear(inDate.year + 2000)) {
         daysInMonth[2-1] = 29;
     }
     
     // 올해의 현재 월까지 일 수 더하기
-    for (temp = 1; temp < inDate.mon; temp++) {
-        days += daysInMonth[temp-1];
+    for (temp = 0; temp < (inDate.mon-1); temp++) {
+        days += daysInMonth[temp];
     }
-    
     // 현재 월의 일 수 더하기
     days += inDate.day;
 	return days;
 }
 
-uint8 LastDays(uint8 Mon)
+uint8 LastMonthDays(dataTimeS_t inDate)
 {
 	uint8 daysInMonth[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
 	if (isLeapYear(inDate.year + 2000)) {
         daysInMonth[2-1] = 29;
     }
-	return daysInMonth[Mon -1];
+	return daysInMonth[inDate.mon -1];
 }
 
 uint8 get_message_mode(dataTimeS_t now, dataTimeS_t LastAck)
@@ -649,15 +640,16 @@ uint8 get_message_mode(dataTimeS_t now, dataTimeS_t LastAck)
 	
 	nowDays = dateToDays(now);
 	LastDays = dateToDays(LastAck);
-	printf("now days : %d, Last days : %d \n", nowDays, LastDays);
+	//printf("now days : %d, Last days : %d \n", nowDays, LastDays);
+	printf("diff days : %d \n", nowDays - LastDays);
 	nowDays -= LastDays;
-	printf("diff : %d\n", nowDays);
+	//printf("diff : %d\n", nowDays);
 	tempTime = now.hour-LastAck.hour;
 	if((tempTime)<0)
 	{
 		nowDays--;
 	}
-	printf("diff h : %d\n", nowDays);
+	//printf("diff h : %d\n", nowDays);
 	#if 1
 	for(i=0; i<6; i++)
 	{
@@ -687,17 +679,85 @@ uint8 get_message_mode(dataTimeS_t now, dataTimeS_t LastAck)
 	}
 	#endif
 }
-dataTimeS_t tempLastA;
 
-void meterList(dataTimeS_t Indata, uint8 mode, uint8 *data)
+dataTimeS_t decreaseDate(dataTimeS_t Indata, uint8 mode)
 {
-	int i;
-	uint8 ret = 0, tempSect, tempUnit;
+	dataTimeS_t ret = {0,};
+	if((Indata.hour - mode) < 0)
+	{
+		if(Indata.day == 1)
+		{
+			if(Indata.mon == 1)
+			{
+				Indata.mon = 12;
+				Indata.day = 31;
+				Indata.year--;
+			}
+			else
+			{
+				Indata.mon--;
+				Indata.day = LastMonthDays(Indata);
+			}
+		}
+		else
+		{
+			Indata.day--;
+		}
+		Indata.hour = Indata.hour + 24 - mode;
+	}
+	else
+		Indata.hour -= mode;
+	
+	memcpy(&ret, &Indata, sizeof(dataTimeS_t));
+	return ret;
+}
+
+uint8 CheckSectMapSort(dataTimeS_t Indata)
+{
 	map_sector_t *pMap =  &g_Map;
-	data_sector_t *pData =NULL;
+	int i;
+	for(i=0; i<90; i++)
+	{
+		if(memcmp(&pMap->unitMap[sortMapdata[i]], &Indata, sizeof(uint8)*3) == 0)
+		{
+			return sortMapdata[i];
+		}
+	}
+	printf("error not find\n");
+	return 0xFF;
+}
+uint8 CheckMeterDataCount(dataTimeS_t start, dataTimeS_t Last, uint8 mode)
+{
+	uint8 len = 0;
+	dataTimeS_t tempdate = start;
 	while(1)
 	{
-		if(Indata.hour == 0)
+		tempdate = decreaseDate(tempdate, mode);
+		if(memcmp(&tempdate, &Last, sizeof(dataTimeS_t))<=0)
+		{
+			printf("finish data\n");
+			return len;
+		}
+		len++;
+	}
+	return len;
+}
+
+dataTimeS_t tempLastA;
+
+uint8 meterList(dataTimeS_t Indata, dataTimeS_t LastAck, uint8 mode, uint32 *data)
+{
+	//int i;
+	uint8 ret = 0, tempSect, tempUnit;
+	uint8 datapos = 0, timefirst = 0;
+	
+	data_sector_t *pData =NULL;
+	dataTimeS_t tempdate = Indata;
+	uint8 Len =0;
+	while(1)
+	{
+		#if 0
+		if((Indata.hour - mode) < 0)
 		{
 			if(Indata.day == 1)
 			{
@@ -709,18 +769,34 @@ void meterList(dataTimeS_t Indata, uint8 mode, uint8 *data)
 				}
 				else
 				{
-					Indata.day = LastDays(Indata.mon - 1);
+					Indata.mon--;
+					Indata.day = LastMonthDays(Indata);
 				}
 			}
 			else
 			{
 				Indata.day--;
 			}
-			Indata.hour = 23;
+			Indata.hour = Indata.hour + 24 - mode;
 		}
 		else
-			Indata.hour--;
-
+			Indata.hour -= mode;
+	#endif
+		tempdate = decreaseDate(tempdate, mode);
+		if(memcmp(&tempdate, &LastAck, sizeof(dataTimeS_t))<=0)
+		{
+			printf("finish data\n");
+			return Len;
+		}
+		//printf("decrease time : %02d-%02d-%02d:%02d \r\n",tempdate.year, tempdate.mon, tempdate.day, tempdate.hour);
+		datapos = CheckSectMapSort(tempdate);
+		printf("data position : %d\n", datapos);
+		if(datapos == 0xFF)
+		{
+			printf("not found data \r\n");
+			break;
+		}
+#if 0
 		for(i=0; i<91; i++)
 		{
 			if(memcmp(&pMap->unitMap[sortMapdata[i]], &Indata, sizeof(uint8)*3) == 0)
@@ -730,29 +806,78 @@ void meterList(dataTimeS_t Indata, uint8 mode, uint8 *data)
 			}
 		}
 		if(ret == 0)
-			printf("error not find\n");
-		
-		tempSect = sortMapdata[i] /5;
-		tempUnit = sortMapdata[i] % 5;
-		pData = &g_save_data[tempSect];
-		pData->dataUnit[tempUnit].data[Indata.hour];
-		
-		if(memcmp(&Indata, &tempLastA, sizeof(dataTimeS_t))==0)
 		{
-			printf("finish data\n");
+			printf("error not find\n");
 			break;
 		}
+		tempSect = sortMapdata[i] /5;
+		tempUnit = sortMapdata[i] % 5;
+#endif
+		tempSect = datapos / 5;
+		tempUnit = datapos % 5;
+		pData = &g_save_data[tempSect];
+		do
+		{
+			if(timefirst == 1)
+			{
+				tempdate.hour -= mode;
+			}
+			timefirst = 1;
+			if(memcmp(&tempdate, &LastAck, sizeof(dataTimeS_t))<=0)
+			{
+				printf("finish data\n");
+				return Len;
+			}
+			Len++;
 
+			 //data print
+			printf("%02d-%02d-%02d:%02d [%02d] %02x%02x%02x%02x \n",\
+			pData->dataUnit[tempUnit].year, pData->dataUnit[tempUnit].mon, pData->dataUnit[tempUnit].day, \
+			tempdate.hour, pData->dataUnit[tempUnit].caliber_dp, pData->dataUnit[tempUnit].data[tempdate.hour][0], \
+			pData->dataUnit[tempUnit].data[tempdate.hour][1], pData->dataUnit[tempUnit].data[tempdate.hour][2], pData->dataUnit[tempUnit].data[tempdate.hour][3]);
+
+			bcd2int(pData->dataUnit[tempUnit].data[tempdate.hour], data, 4);
+			data++;
+		}
+		while ((tempdate.hour - mode)>=0);
+		timefirst = 0;
 	}
+	return Len;
+}
+
+void TestPro(dataTimeS_t nowdate, dataTimeS_t ackdate)
+{
+	uint8 tempMode = 0;
+	uint8 count =0, i;
+	uint32 *tempData = NULL;
+	uint32 *p=NULL;
+	printf("Now %02d-%02d-%02d %02dh\r\n", nowdate.year, nowdate.mon, nowdate.day, nowdate.hour);
+	printf("Last %02d-%02d-%02d %02dh\r\n", ackdate.year, ackdate.mon, ackdate.day, ackdate.hour);
+	tempMode = get_message_mode(nowdate, ackdate);
+	printf("temp Mode = %d\n", tempMode);
+	count = CheckMeterDataCount(nowdate, tempLastA, tempMode);
+	printf("check count = %d\n", count);
+	tempData = (uint32 *)malloc(sizeof(uint32)*count);
+	memset(tempData, 0, sizeof(uint32)*count);
+	count = meterList(nowdate, tempLastA, tempMode, tempData);
+	printf("data count = %d\n", count);
+	p = tempData;
+	for(i=0; i<count; i++)
+	{
+		printf("%02d: %ld\r\n", i, *p++);
+		//p++;
+	}
+	free(tempData);
 }
 
 int main(int argc, char *argv[])
 {
 	flash_save_data_t save_data[90*24]={0,};
 	dataTrans4_t meter_data;
+	dataTimeS_t tempIndate;
 	uint32 meter_add = 10;
 	//meter_data.data_b32 = 10;
-	int i, j=0, k=1, l=0;
+	int i, j=0, k=1, l=0, m=0;
 	uint32 temp_test = 12345678, temp_trans = 0;
 	int2bcd(&temp_trans, &temp_test, 8);
 	printf("in:%08ld out:0x%08lX\n", temp_test, temp_trans);
@@ -761,18 +886,28 @@ int main(int argc, char *argv[])
 	memset(&g_Map, 0, sizeof(map_sector_t));
 	srand(time(NULL));
 	printf("start save data input\n");
+	m=23;
+	j= 12;
+	k=27;
 	for(i=0; i< 90*24; i++)
 	{
-		save_data[i].year = 24;
-		save_data[i].mon = 2 + j;
+		save_data[i].year = m;
+		save_data[i].mon = j;
 		save_data[i].day = k;
 		save_data[i].hour = l++;
+		memcpy(&tempIndate, &save_data[i], sizeof(uint8)*4);
 		if(l>23)
 		{
 			l=0;
-			if(++k>30)
+			if(++k>LastMonthDays(tempIndate))
 			{
-				j++;
+				if(j==12)
+				{
+					j=1;
+					m++;
+				}
+				else
+					j++;
 				k=1;
 			}
 		}
@@ -797,7 +932,7 @@ int main(int argc, char *argv[])
 	
 	dataFlash_displayMapSector();
 	
-	restSortMap();
+	resetSortMap();
 	display_sector(0);
 	sortMapSector();
 	display_sector(1);
@@ -808,18 +943,40 @@ int main(int argc, char *argv[])
 	
 	uint8 tempMode = 0;
 	tempNow.year = 24;
-	tempNow.mon = 4;
-	tempNow.day = 30;
-	tempNow.hour = 12;
+	tempNow.mon = 1;
+	tempNow.day = 1;
+	tempNow.hour = 6;
 
-	tempLastA.year = 24;
-	tempLastA.mon = 4;
+	tempLastA.year = 23;
+	tempLastA.mon = 12;
 	tempLastA.day = 29;
-	tempLastA.hour = 9;
+	tempLastA.hour = 6;
+
+#if 0
 	printf("Last %02d-%02d-%02d %02dh\r\n", tempLastA.year, tempLastA.mon, tempLastA.day, tempLastA.hour);
 	printf("Now %02d-%02d-%02d %02dh\r\n", tempNow.year, tempNow.mon, tempNow.day, tempNow.hour);
 	tempMode = get_message_mode(tempNow, tempLastA);
 	printf("temp Mode = %d\n", tempMode);
+	meterList(tempNow, tempMode, NULL);
+	#endif
+	TestPro(tempNow, tempLastA);
+#if 1
+	tempNow.mon = 1;
+	tempNow.day = 1;
+	tempNow.hour = 9;
+
+	tempLastA.year = 23;
+	tempLastA.mon = 12;
+	tempLastA.day = 27;
+	tempLastA.hour = 9;
+
+	for(i=0; i<10; i++)
+	{
+		tempNow.day += 1;
+		tempNow.hour++;
+		TestPro(tempNow, tempLastA);
+	}
+#endif
 	#if 0
 	map_sector_t *pMap =  &g_Map;
 	
@@ -838,7 +995,7 @@ int main(int argc, char *argv[])
 	#endif
 	#if 0
 	printf("data sector\r\n");
-	for(i=0; i<18;i++)
+	for(i=0; i<2;i++)
 	{
 		dataFlash_displayDataSector(i);
 	}
