@@ -12,7 +12,7 @@
 // data sector
 #define FIRST_DATA_SECTOR 0
 #define NUM_DATA_SECTOR 18
-#define UNIT_PER_DATA_SECTOR 5 // ÇÏ³ªÀÇ sector´Â ´Ù¼¸ Á¶°¢À¸·Î ±¸¼º
+#define UNIT_PER_DATA_SECTOR 5 // ï¿½Ï³ï¿½ï¿½ï¿½ sectorï¿½ï¿½ ï¿½Ù¼ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½
 #define NUM_DATE_TO_STORE (NUM_DATA_SECTOR * UNIT_PER_DATA_SECTOR)
 
 #define FLASH_DATA_MARKER 0x41544144
@@ -133,7 +133,7 @@ static int isValidMeterValue(uint8 *p)
 
     int valid = 1;
     for(int i = 0; i < strlen(valueStr); i++) {
-        // stringÀ¸·Î º¯È¯ÇßÀ» ¶§ ¼ýÀÚ°¡ ¾Æ´Ñ°Ô ÀÖÀ¸¸é invalid
+        // stringï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½È¯ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½Ú°ï¿½ ï¿½Æ´Ñ°ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ invalid
         if(valueStr[i] < '0' || valueStr[i] > '9') {
             valid = 0;
             break;
@@ -142,7 +142,7 @@ static int isValidMeterValue(uint8 *p)
 #else
 	int valid = 1;
 	for (int i = 0; i < 4; i++) {
-		// 9º¸´Ù Å«°æ¿ì
+		// 9ï¿½ï¿½ï¿½ï¿½ Å«ï¿½ï¿½ï¿½
 		uint8 value = *(p + i);
 		uint8 upper = (value >> 4) & 0x0f;
 		uint8 lower = value & 0x0f;
@@ -440,7 +440,7 @@ static int make_dateList(int nDay, date_sort_t *pSort, day_data_map_t *pDayMap)
 		pDayMap->unitDayDataMap[nMon].dayFlag[nByte] |= (1<<nBit);
 	}
 
-	nMon += 1; // ½ÃÀÛÀÌ -1ÀÌ±â ¶§¹®...
+	nMon += 1; // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ -1ï¿½Ì±ï¿½ ï¿½ï¿½ï¿½ï¿½...
 
 	for (unsigned int i = 0; i < nMon; i++) {
 		unit_day_data_map_t *pUnitMap = &pDayMap->unitDayDataMap[i];
@@ -609,16 +609,16 @@ uint16 dateToDays(dataTimeS_t inDate)
 	for (temp = 1; temp < inDate.year; temp++) {
         days += isLeapYear(temp + 2000) ? 366 : 365;
     }
-    // ¿ÃÇØ°¡ À±³âÀÌ¸é 2¿ùÀÇ ÀÏ ¼ö¸¦ 29ÀÏ·Î º¯°æ
+    // ï¿½ï¿½ï¿½Ø°ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½Ì¸ï¿½ 2ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ 29ï¿½Ï·ï¿½ ï¿½ï¿½ï¿½ï¿½
     if (isLeapYear(inDate.year + 2000)) {
         daysInMonth[2-1] = 29;
     }
     
-    // ¿ÃÇØÀÇ ÇöÀç ¿ù±îÁö ÀÏ ¼ö ´õÇÏ±â
+    // ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½Ï±ï¿½
     for (temp = 0; temp < (inDate.mon-1); temp++) {
         days += daysInMonth[temp];
     }
-    // ÇöÀç ¿ùÀÇ ÀÏ ¼ö ´õÇÏ±â
+    // ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ ï¿½ï¿½ï¿½Ï±ï¿½
     days += inDate.day;
 	return days;
 }
@@ -754,6 +754,7 @@ uint8 meterList(dataTimeS_t Indata, dataTimeS_t LastAck, uint8 mode, uint32 *dat
 	data_sector_t *pData =NULL;
 	dataTimeS_t tempdate = Indata;
 	uint8 Len =0;
+	uint8 *tempData = NULL;
 	while(1)
 	{
 		#if 0
@@ -836,7 +837,19 @@ uint8 meterList(dataTimeS_t Indata, dataTimeS_t LastAck, uint8 mode, uint32 *dat
 			tempdate.hour, pData->dataUnit[tempUnit].caliber_dp, pData->dataUnit[tempUnit].data[tempdate.hour][0], \
 			pData->dataUnit[tempUnit].data[tempdate.hour][1], pData->dataUnit[tempUnit].data[tempdate.hour][2], pData->dataUnit[tempUnit].data[tempdate.hour][3]);
 
-			bcd2int(pData->dataUnit[tempUnit].data[tempdate.hour], data, 4);
+			uint32 sampledata = 0xFFFFFFFF;
+			tempData = pData->dataUnit[tempUnit].data[tempdate.hour];
+			if((tempData[0]==0xFF)&&(tempData[1]==0xFF)&&(tempData[2]==0xFF)&&(tempData[3]==0xFF))
+			//if(memcmp(pData->dataUnit[tempUnit].data[tempdate.hour], &sampledata, sizeof(uint32))==0)
+			{
+				memset(data, 0xFFFFFFFF, sizeof(uint32));
+				//printf("data 0xFFFFFFFF\n");
+			}
+			else
+			{
+				bcd2int(pData->dataUnit[tempUnit].data[tempdate.hour], data, 4);
+			}
+			
 			data++;
 		}
 		while ((tempdate.hour - mode)>=0);
@@ -855,16 +868,20 @@ void TestPro(dataTimeS_t nowdate, dataTimeS_t ackdate)
 	printf("Last %02d-%02d-%02d %02dh\r\n", ackdate.year, ackdate.mon, ackdate.day, ackdate.hour);
 	tempMode = get_message_mode(nowdate, ackdate);
 	printf("temp Mode = %d\n", tempMode);
-	count = CheckMeterDataCount(nowdate, tempLastA, tempMode);
+	count = CheckMeterDataCount(nowdate, ackdate, tempMode);
 	printf("check count = %d\n", count);
 	tempData = (uint32 *)malloc(sizeof(uint32)*count);
 	memset(tempData, 0, sizeof(uint32)*count);
 	count = meterList(nowdate, tempLastA, tempMode, tempData);
 	printf("data count = %d\n", count);
 	p = tempData;
+	uint32 sampledata = 0xFFFFFFFF;
+
 	for(i=0; i<count; i++)
 	{
+		printf("FF dif =%08lx(%08lx)\n", *p&0x00FFFFFFFF, *p);
 		printf("%02d: %ld\r\n", i, *p++);
+		printf("diff %ld - %ld = %ld\n", tempData[i], tempData[i+1], tempData[i]-tempData[i+1]);
 		//p++;
 	}
 	free(tempData);
@@ -919,7 +936,15 @@ int main(int argc, char *argv[])
 		//memcpy(save_data[i].meterValue, &temp_trans, sizeof(uint32));
 		meter_data.data_b32 = temp_trans;
 		#if 1
-		EndianTrans4b(save_data[i].meterValue, meter_data.data_b8);
+		if((i%2)==0)
+		{
+			memset(save_data[i].meterValue, 0xff, sizeof(uint8)*4);
+		}
+		else
+		{
+			EndianTrans4b(save_data[i].meterValue, meter_data.data_b8);
+		}
+		
 		#else
 		save_data[i].meterValue[0] = meter_data.data_b8[3];
 		save_data[i].meterValue[1] = meter_data.data_b8[2];
@@ -960,7 +985,7 @@ int main(int argc, char *argv[])
 	meterList(tempNow, tempMode, NULL);
 	#endif
 	TestPro(tempNow, tempLastA);
-#if 1
+#if 0
 	tempNow.mon = 1;
 	tempNow.day = 1;
 	tempNow.hour = 9;
@@ -1000,7 +1025,24 @@ int main(int argc, char *argv[])
 		dataFlash_displayDataSector(i);
 	}
 	#endif
+	uint32 ffdata=0xFFFFFFFF;
+	uint8 sample[4]={0,};
+	dataTrans4_t testsample;
+	sample[0] = 0xFF;
+	sample[1] = 0xFF;
+	sample[2] = 0xFF;
+	sample[3] = 0xFF;
+	testsample.data_b8[0] =0xFF;
+	testsample.data_b8[1] =0xFF;
+	testsample.data_b8[2] =0xFF;
+	testsample.data_b8[3] =0xFF;
+	int retdata = 0;
 	
+	printf("sample - 0x%02x%02x%02x%02x\n", sample[0], sample[1], sample[2], sample[3]);
+	printf("ffdata = 0x%08lx\n", ffdata);
+	printf("testrans = 0x%08lx\n", testsample.data_b32);
+	retdata = memcmp(sample ,&ffdata, sizeof(uint32));
+	printf("0xFFFFFFFF comp = %d\n", retdata);
 
 	return 0;
 }
