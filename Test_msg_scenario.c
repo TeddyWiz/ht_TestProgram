@@ -7,7 +7,9 @@
 #define uint32 unsigned long
 #define uchar unsigned char
 #define uint16 unsigned short
-
+#define BOOL 	unsigned char
+#define TRUE 1
+#define FALSE 0
 
 // data sector
 #define FIRST_DATA_SECTOR 0
@@ -26,6 +28,18 @@
 
 #define ALL_FF 0xFFFFFFFF
 #define _IS_SET(reg, n) ((reg) & (1 << (n)))
+
+
+typedef struct {
+	uint16 year; // yearH, yearL
+	uint8 mon;
+	uint8 day;
+	uint8 hour;
+	uint8 min;
+	uint8 sec;
+	uint8 reserved;
+} Date_t;
+
 
 typedef struct { // 100 bytes
 	uint8 year;
@@ -100,6 +114,39 @@ typedef union{
 	uint32 data_b32;
 	uint8 data_b8[4];
 } dataTrans4_t;
+
+
+typedef struct {
+	uint8 battery : 2, // terminal battery
+		lowBatt : 1, // meter battery
+		fArrow : 1, rArrow : 1, m3 : 1, notUsed : 1, leak : 1;
+} LcdIcon_t;
+
+typedef struct {
+	uint8 year;
+	uint8 mon;
+	uint8 day;
+	uint8 hour;
+	uint8 min;
+	uint8 sec;
+	uint8 isTimeSync;
+	uint8 meterData[4];
+	uint8 meterStatus;
+	uint8 st[2];
+	uint8 rt[2];
+	uint8 flowData[4];
+	LcdIcon_t icon;
+    uint8 temperature[2];
+    uint8 pressure[2];
+} MeterUnitData_t;
+
+typedef struct {
+	uchar interval;
+	uchar numData;
+	uchar refValuePos;
+	uchar refValue[4];
+	uchar valueDiff[24][2];
+} NbiotMeterData_t;
 
 data_sector_t g_save_data[NUM_DATA_SECTOR];
 map_sector_t g_Map;
@@ -418,14 +465,90 @@ void dataFlash_displayDataSector(int sector)
 	//}
 }
 
-static int make_dateList(int nDay, date_sort_t *pSort, day_data_map_t *pDayMap)
+void resetSortMap(void)
+{
+	//sortMapdata
+	int i = 0, j=1;
+	//printf("reset sortmap \r\n%d : ", j++);
+	for(i=0; i<90; i++)
+	{
+		sortMapdata[i]=89-i;
+		#if 0
+		printf("%d ", sortMapdata[i]);
+		if(((i+1)%10)==0)
+			printf("\n%d : ", j++);
+			#endif
+	}
+}
+uint8 sortMapSector(map_sector_t *pMap)
+{
+	
+	uint8 i, j;
+	unit_map_t *tempMap = NULL;
+	int tempComp = 0;
+	uint8 tempvalue;
+	
+	//pMap =  &g_Map;
+	memcpy(pMap, &g_Map, sizeof(map_sector_t));
+	#if 0
+	for(i=0; i<90; i++)
+	{
+		sortMapdata[i]=i;
+	}
+	#endif
+	for(i=0; i<90; i++)
+	{
+		for(j=i+1; j<90; j++)
+		{
+			tempMap = &pMap->unitMap[sortMapdata[i]];
+			if (isValidDate(tempMap->year, tempMap->mon, tempMap->day)==0)
+			{
+				tempvalue = sortMapdata[i];
+				sortMapdata[i] = sortMapdata[j];
+				sortMapdata[j] = tempvalue;
+			}
+			else
+			{
+				tempMap = &pMap->unitMap[sortMapdata[j]];
+				if (isValidDate(tempMap->year, tempMap->mon, tempMap->day))
+				{
+					tempComp =  memcmp(&pMap->unitMap[sortMapdata[i]], &pMap->unitMap[sortMapdata[j]], sizeof(uint8)*3);
+					if(tempComp < 0){
+						tempvalue = sortMapdata[i];
+						sortMapdata[i] = sortMapdata[j];
+						sortMapdata[j] = tempvalue;
+					}
+				}
+			}
+
+			
+		}
+	}
+	for(i=0; i<90; i++)
+	{
+		tempMap = &pMap->unitMap[sortMapdata[i]];
+		if (isValidDate(tempMap->year, tempMap->mon, tempMap->day)==0)
+			break;
+	}
+	printf("nday = %d\n", i);
+	return i;
+}
+#if 0
+static int make_dateList(int nDay,  day_data_map_t *pDayMap)
 {
 	int nMon = -1;
 	int mon = -1;
 	int year = -1;
+	map_sector_t *pMap;
+	unit_map_t *p = NULL;
+	//fix_mapSector();
+	//read_mapSector((uint8 *)pMap);
+	pMap = &g_Map;
 
 	for (unsigned int i = 0; i < nDay; i++) {
-		date_sort_t *p = pSort + i;
+		//date_sort_t *p = pSort + i;
+		p = &pMap->unitMap[sortMapdata[i]];
+		printf("%02d-%02d-%02d\n", p->year, p->mon, p->day);
 		if (year != p->year || mon != p->mon) {
 			if (++nMon >= 5) {
 				break;
@@ -446,6 +569,49 @@ static int make_dateList(int nDay, date_sort_t *pSort, day_data_map_t *pDayMap)
 		unit_day_data_map_t *pUnitMap = &pDayMap->unitDayDataMap[i];
 		if (isValidDate(pUnitMap->year, pUnitMap->mon, 1)) {
 			printf("%04d-%02d ", pUnitMap->year + 2000, pUnitMap->mon);
+
+			for (unsigned int j = 0; j < 4; j++) {
+				char binary[0x10] = "";
+				hex2binary(pUnitMap->dayFlag[j], binary);
+				printf("%s ", binary);
+			}
+			printf("\n");
+		}
+	}
+
+	return nMon;
+}
+#endif
+static int make_dateList(int nDay, map_sector_t *pMap, day_data_map_t *pDayMap)
+{
+	int nMon = -1;
+	int mon = -1;
+	int year = -1;
+	unit_map_t *p = NULL;
+	
+	for (unsigned int i = 0; i < nDay; i++) {
+		//date_sort_t *p = pSort + i;
+		p = &pMap->unitMap[sortMapdata[i]];
+		if (year != p->year || mon != p->mon) {
+			if (++nMon >= 5) {
+				break;
+			}
+			year = p->year;
+			mon = p->mon;
+			pDayMap->unitDayDataMap[nMon].year = p->year;
+			pDayMap->unitDayDataMap[nMon].mon = p->mon;
+		}
+		unsigned int nByte = (p->day - 1) / 8;
+		unsigned int nBit = 7 - ((p->day - 1) % 8);
+		pDayMap->unitDayDataMap[nMon].dayFlag[nByte] |= (1<<nBit);
+	}
+
+	nMon += 1; // 시작이 -1이기 때문...
+
+	for (unsigned int i = 0; i < nMon; i++) {
+		unit_day_data_map_t *pUnitMap = &pDayMap->unitDayDataMap[i];
+		if (isValidDate(pUnitMap->year, pUnitMap->mon, 1)) {
+			//printf("%04d-%02d ", pUnitMap->year + 2000, pUnitMap->mon);
 
 			for (unsigned int j = 0; j < 4; j++) {
 				char binary[0x10] = "";
@@ -498,26 +664,33 @@ static int readAndSort_map(map_sector_t *pMap, date_sort_t *pSort)
 }
 void dataFlash_displayMapSector()
 {
-	//uint32 buf32[SECTOR_SIZE / 4];
-	map_sector_t *pMap =  &g_Map;//(map_sector_t *)buf32;
+	uint32 buf32[512 / 4];
+	map_sector_t *pMap = (map_sector_t *)buf32;
 
-	date_sort_t SortedData[NUM_DATE_TO_STORE];
-	memset(&SortedData, 0, sizeof(SortedData));
+	//date_sort_t SortedData[NUM_DATE_TO_STORE];
+	//memset(&SortedData, 0, sizeof(SortedData));
 
-	int nDay = readAndSort_map(pMap, SortedData);
+	//int nDay = readAndSort_map(pMap, SortedData);
+	int nDay = sortMapSector(pMap);
 	if (nDay == 0) {
 		return;
 	}
-
+	printf("day : %d\n", nDay);
+	#if 0
+	printf("%04d-%02d-%02d ", pMap->unitMap[0].year + 2000, pMap->unitMap[0].mon,
+				       pMap->unitMap[0].day);
+					   #endif
 	day_data_map_t dayDataMap;
 	memset(&dayDataMap, 0, sizeof(dayDataMap));
-	int nMonth = make_dateList(nDay, SortedData, &dayDataMap);
+	//int nMonth = make_dateList(nDay, SortedData, &dayDataMap);
+	//pMap = &g_Map;
+	int nMonth = make_dateList(nDay, pMap, &dayDataMap);
 
 	for (int nSector = FIRST_DATA_SECTOR; nSector < NUM_DATA_SECTOR; nSector++) {
 		printf("[sector %2d] ", nSector);
 		for (int nUnit = 0; nUnit < UNIT_PER_DATA_SECTOR; nUnit++) {
 			int pos = nSector * UNIT_PER_DATA_SECTOR + nUnit;
-			unit_map_t *pUnit = &pMap->unitMap[pos];
+			unit_map_t *pUnit = &pMap->unitMap[pos];//&pMap->unitMap[pos];
 			printf("(%d) ", nUnit);
 			if (isValidDate(pUnit->year, pUnit->mon, pUnit->day)) {
 				printf("%04d-%02d-%02d ", pUnit->year + 2000, pUnit->mon,
@@ -531,46 +704,6 @@ void dataFlash_displayMapSector()
 		//WDT_CLEAR;
 	}
 }
-void resetSortMap(void)
-{
-	//sortMapdata
-	int i = 0, j=1;
-	printf("reset sortmap \r\n%d : ", j++);
-	for(i=0; i<90; i++)
-	{
-		sortMapdata[i]=89-i;
-		printf("%d ", sortMapdata[i]);
-		if(((i+1)%10)==0)
-			printf("\n%d : ", j++);
-	}
-}
-void sortMapSector(void)
-{
-	map_sector_t *pMap =  &g_Map;
-	int i, j;
-	unit_map_t tempMap;
-	int tempComp = 0;
-	uint8 tempvalue;
-	#if 0
-	for(i=0; i<90; i++)
-	{
-		sortMapdata[i]=i;
-	}
-	#endif
-	for(i=0; i<90; i++)
-	{
-		for(j=i+1; j<90; j++)
-		{
-			tempComp =  memcmp(&pMap->unitMap[sortMapdata[i]], &pMap->unitMap[sortMapdata[j]], sizeof(uint8)*3);
-			if(tempComp < 0){
-				tempvalue = sortMapdata[i];
-				sortMapdata[i] = sortMapdata[j];
-				sortMapdata[j] = tempvalue;
-			}
-		}
-	}
-}
-
 void display_sector(char mode)
 {
 	int i = 0;
@@ -744,6 +877,7 @@ uint8 CheckMeterDataCount(dataTimeS_t start, dataTimeS_t Last, uint8 mode)
 }
 
 dataTimeS_t tempLastA;
+dataTimeS_t LastAckDate;
 
 uint8 meterList(dataTimeS_t Indata, dataTimeS_t LastAck, uint8 mode, uint32 *data)
 {
@@ -879,12 +1013,139 @@ void TestPro(dataTimeS_t nowdate, dataTimeS_t ackdate)
 
 	for(i=0; i<count; i++)
 	{
-		printf("FF dif =%08lx(%08lx)\n", *p&0x00FFFFFFFF, *p);
+		if(*p&0x00FFFFFFFF == 0xFFFFFFFF)
+		{
+			printf("FF dif =%08lx(%08lx)\n", *p&0x00FFFFFFFF, *p);
+		}
+		
 		printf("%02d: %ld\r\n", i, *p++);
 		printf("diff %ld - %ld = %ld\n", tempData[i], tempData[i+1], tempData[i]-tempData[i+1]);
 		//p++;
 	}
 	free(tempData);
+}
+
+BOOL METER_isAllFF(uchar *p, int len)
+{
+	BOOL result = TRUE;
+
+	for (unsigned int i = 0; i < len; i++) {
+		if (*(p + i) != 0xFF) {
+			result = FALSE;
+			break;
+		}
+	}
+	return result;
+}
+MeterUnitData_t StroeUnit;
+
+MeterUnitData_t *METER_getStoredData(void)
+{
+	return &StroeUnit; //&StoredMeterData.unit;
+}
+static int insert_multiData(NbiotMeterData_t *p)
+{
+#if 0
+
+	METER_collectStoredData();
+
+	uchar nData = METER_getNumberOfStoredData();
+	if (nData > MAX_NUM_STORED_DATA) {
+		nData = MAX_NUM_STORED_DATA;
+	}
+#endif
+
+	Date_t now;
+	dataTimeS_t nowdate;
+	uint8 i, posval = 0;
+	uint32 *loadData = NULL;
+	MeterUnitData_t *lastUnit;
+	uint32 prevValue = 0;
+	uint16 diff=0;
+	//RTC_read(&now);
+	now.year = 2024;
+	now.mon = 3;
+	now.day = 15;
+	now.hour = 11;
+	now.min = 45;
+	now.sec = 22;
+	nowdate.year = now.year - 2000;
+	memcpy(&nowdate.mon, &now.mon, sizeof(uint8)*3); //test 필요
+
+	printf("now : %02d-%02d-%02d : %02d\n",nowdate.year,nowdate.mon,nowdate.day,nowdate.hour );
+	printf("Last : %02d-%02d-%02d : %02d\n", LastAckDate.year, LastAckDate.mon, LastAckDate.day, LastAckDate.hour);
+	//interval meter mode
+	p->interval = get_message_mode(nowdate, LastAckDate);
+	p->numData = CheckMeterDataCount(nowdate, LastAckDate, p->interval);
+	
+	printf("interval = %d\n", p->interval);
+	printf("data count = %d\n", p->numData);
+	//loadData = (uint32 *)OSAL_malloc(sizeof(uint32) * p->numData);
+	loadData = (uint32 *)malloc(sizeof(uint32) * p->numData);
+	memset(loadData, 0, sizeof(uint32) * p->numData);
+	p->numData = meterList(nowdate, LastAckDate, p->interval, loadData);
+	lastUnit = METER_getStoredData();
+	p->refValuePos = 0;
+
+	if (METER_isAllFF(lastUnit->meterData, 4) == FALSE) {
+		bcd2int(lastUnit->meterData, &prevValue, 4);
+		memcpy(p->refValue, &prevValue, 4);
+		printf("ref velue1 : %ld\n", prevValue);
+	}
+	else
+	{
+		p->refValuePos++;
+		for(i=0;  i<p->numData; i++)
+		{
+			if((loadData[i]&0x00ffffffff)==0xffffffff)
+			{
+				p->refValuePos++;
+			}
+			else
+			{
+				break;
+			}
+		}
+		memcpy(p->refValue, &loadData[i], 4);
+		prevValue = loadData[i];
+		posval = i+1;
+		printf("ref velue2[%d] : %ld\n", i, loadData[i]);
+	}
+	memset(p->valueDiff[0], 0, 2);
+
+	printf("refvalue Pos : %d, cnt : %d\n",p->refValuePos , posval);
+	p->numData -= p->refValuePos;
+	for(i=0; i<(p->numData); i++)
+	{
+		if((loadData[i + p->refValuePos]&0x00ffffffff)==0xffffffff)
+		{
+			memset(p->valueDiff[i], 0xFF, 2);
+		}
+		else
+		{
+			if(prevValue < loadData[i + p->refValuePos])
+			{
+				memset(p->valueDiff[i], 0, 2);
+			}
+			else
+			{
+				diff = prevValue - loadData[i + p->refValuePos];
+				prevValue = loadData[i + p->refValuePos];
+				memcpy(p->valueDiff[i], &diff, 2);
+				printf("diff[%2d] : %3d \n", i, diff);
+			}
+		}
+	}
+	
+	printf("diff data : \n");
+	for(i=0; i<p->numData; i++)
+	{
+		printf("%d: %02x%02x %3d\n",i , p->valueDiff[i][1] ,p->valueDiff[i][0] ,p->valueDiff[i][0]);
+	}
+	printf("\n");
+
+	//OSAL_free(loadData);
+return 7 + (p->numData * 2); // 7 = interval(1), nData(1), validPos(1), refValue(4)
 }
 
 int main(int argc, char *argv[])
@@ -899,14 +1160,15 @@ int main(int argc, char *argv[])
 	int2bcd(&temp_trans, &temp_test, 8);
 	printf("in:%08ld out:0x%08lX\n", temp_test, temp_trans);
 
-	memset(g_save_data, 0, sizeof(data_sector_t)*NUM_DATA_SECTOR);
-	memset(&g_Map, 0, sizeof(map_sector_t));
+	memset(g_save_data, 0xFF, sizeof(data_sector_t)*NUM_DATA_SECTOR);
+	memset(&g_Map, 0xFF, sizeof(map_sector_t));
 	srand(time(NULL));
 	printf("start save data input\n");
 	m=23;
 	j= 12;
 	k=27;
-	for(i=0; i< 90*24; i++)
+	//for(i=0; i< 90*24; i++)
+	for(i=0; i< 80*24; i++)
 	{
 		save_data[i].year = m;
 		save_data[i].mon = j;
@@ -936,7 +1198,7 @@ int main(int argc, char *argv[])
 		//memcpy(save_data[i].meterValue, &temp_trans, sizeof(uint32));
 		meter_data.data_b32 = temp_trans;
 		#if 1
-		if((i%2)==0)
+		if((i%3)==0)
 		{
 			memset(save_data[i].meterValue, 0xff, sizeof(uint8)*4);
 		}
@@ -954,12 +1216,14 @@ int main(int argc, char *argv[])
 		saveData(&save_data[i]);
 	}
 	printf("finish save data input\n");
+	resetSortMap();
 	
 	dataFlash_displayMapSector();
 	
-	resetSortMap();
+	//resetSortMap();
 	display_sector(0);
-	sortMapSector();
+	map_sector_t pMap;
+	sortMapSector(&pMap);
 	display_sector(1);
 	//printf("display 0 Sector = %02d, uinit = %02d\n", sortMapdata[0]/5, sortMapdata[0]%5);
 	//dataFlash_displayDataSector(sortMapdata[0]/5);
@@ -984,7 +1248,7 @@ int main(int argc, char *argv[])
 	printf("temp Mode = %d\n", tempMode);
 	meterList(tempNow, tempMode, NULL);
 	#endif
-	TestPro(tempNow, tempLastA);
+	//TestPro(tempNow, tempLastA);
 #if 0
 	tempNow.mon = 1;
 	tempNow.day = 1;
@@ -1025,6 +1289,7 @@ int main(int argc, char *argv[])
 		dataFlash_displayDataSector(i);
 	}
 	#endif
+	#if 0
 	uint32 ffdata=0xFFFFFFFF;
 	uint8 sample[4]={0,};
 	dataTrans4_t testsample;
@@ -1043,7 +1308,60 @@ int main(int argc, char *argv[])
 	printf("testrans = 0x%08lx\n", testsample.data_b32);
 	retdata = memcmp(sample ,&ffdata, sizeof(uint32));
 	printf("0xFFFFFFFF comp = %d\n", retdata);
+#endif
+	dataTimeS_t testnow;
+	uint8 datapos1;
+	testnow.year = 24;
+	testnow.mon = 3;
+	testnow.day = 15;
+	testnow.hour = 11;
+	datapos1 = CheckSectMapSort(testnow);
+	uint8 tempSect1 = datapos1 / 5;
+    uint8 tempUnit1 = datapos1 % 5;
+	data_sector_t *pData = &g_save_data[tempSect1];
 
+
+	
+	LastAckDate.year = 24;
+	LastAckDate.mon = 3;
+	LastAckDate.day = 14;
+	LastAckDate.hour = 3;
+	printf("input storedata\n");
+	memset(&StroeUnit, 0, sizeof(MeterUnitData_t));
+	StroeUnit.year = 24;
+	StroeUnit.mon = 3;
+	StroeUnit.day = 15;
+	StroeUnit.hour = 11;
+	StroeUnit.min = 45;
+	StroeUnit.sec = 22;
+	StroeUnit.isTimeSync = 0;
+	StroeUnit.meterStatus = 0x00;
+	#if 1
+	StroeUnit.meterData[0]= 0xFF;
+	StroeUnit.meterData[1]= 0xFF;
+	StroeUnit.meterData[2]= 0xFF;
+	StroeUnit.meterData[3]= 0xFF;
+	#else
+	StroeUnit.meterData[0]= pData->dataUnit[tempUnit1].data[StroeUnit.hour][0];
+	StroeUnit.meterData[1]= pData->dataUnit[tempUnit1].data[StroeUnit.hour][1];
+	StroeUnit.meterData[2]= pData->dataUnit[tempUnit1].data[StroeUnit.hour][2];
+	StroeUnit.meterData[3]= pData->dataUnit[tempUnit1].data[StroeUnit.hour][3];
+	#endif
+
+	uint8 msg[1024];
+	char tempdebug[1024]={0,};
+	int tempdebugcnt = 0;
+	int lens = 0;
+	lens = insert_multiData((NbiotMeterData_t *)msg);
+	printf("length = %d\n", lens);
+	msg[lens] = 0;
+	printf("msg:%s\n", msg);
+	#if 0
+	for(int cnt = 0; cnt< lens; cnt++)
+	{
+		tempdebugcnt = sprintf(tempdebug,"%s%02x",msg[cnt]);
+	}
+	#endif
 	return 0;
 }
 
