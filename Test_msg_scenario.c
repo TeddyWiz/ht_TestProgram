@@ -148,6 +148,14 @@ typedef struct {
 	uchar valueDiff[24][2];
 } NbiotMeterData_t;
 
+typedef struct {
+	uchar interval;
+	uchar numData;
+	uchar refValuePos;
+	//uchar refValue[4];
+	uchar valueDiff[24][4];
+} NbiotMeterData1_t; //seoul protocol version 1.7
+
 data_sector_t g_save_data[NUM_DATA_SECTOR];
 map_sector_t g_Map;
 uint8 sortMapdata[90];
@@ -1148,6 +1156,78 @@ static int insert_multiData(NbiotMeterData_t *p)
 return 7 + (p->numData * 2); // 7 = interval(1), nData(1), validPos(1), refValue(4)
 }
 
+static int insert_multiData1(NbiotMeterData1_t *p)
+{
+	Date_t now;
+	dataTimeS_t nowdate;
+	uint8 i, refplus = 0;
+	uint32 *loadData = NULL;
+	MeterUnitData_t *lastUnit;
+	uint32 prevValue = 0;
+	uint16 diff=0;
+	//RTC_read(&now);
+	now.year = 2024;
+	now.mon = 3;
+	now.day = 15;
+	now.hour = 10;
+	now.min = 45;
+	now.sec = 22;
+	nowdate.year = now.year - 2000;
+	memcpy(&nowdate.mon, &now.mon, sizeof(uint8)*3); //test 필요
+
+	//interval meter mode
+	p->interval = get_message_mode(nowdate, LastAckDate);
+	p->numData = CheckMeterDataCount(nowdate, LastAckDate, p->interval);
+	
+	loadData = (uint32 *)malloc(sizeof(uint32) * p->numData);
+	memset(loadData, 0, sizeof(uint32) * p->numData);
+	p->numData = meterList(nowdate, LastAckDate, p->interval, loadData);
+	lastUnit = METER_getStoredData();
+	p->refValuePos = 0;
+	printf("data cnt = %d\n",p->numData);
+
+	if (METER_isAllFF(lastUnit->meterData, 4) == FALSE) {
+		bcd2int(lastUnit->meterData, &prevValue, 4);
+		memcpy(p->valueDiff[0], &prevValue, 4);
+		refplus = 1;
+		printf("ref velue1 : %ld\n", prevValue);
+	}
+	else
+	{
+		p->refValuePos++;
+		for(i=0;  i<p->numData; i++)
+		{
+			if((loadData[i]&0x00ffffffff)==0xffffffff)
+			{
+				p->refValuePos++;
+			}
+			else
+				break;
+		}
+		memcpy(p->valueDiff[0], &loadData[i], 4);
+		printf("ref velue2[%d] : %ld\n", i, loadData[i]);
+	}
+
+	p->numData -= p->refValuePos;
+	for(i=0; i<p->numData; i++)
+	{
+		if((loadData[i + p->refValuePos]&0x00ffffffff)==0xffffffff)
+		{
+			memset(p->valueDiff[i+1], 0xFF, 2);
+		}
+		else
+		{
+			memcpy(p->valueDiff[i+1], &loadData[i + p->refValuePos], 4);
+			printf("ref velue2[%d] : %ld\n", i+1, loadData[i+1]);
+			
+		}
+	}
+	p->numData+=refplus;
+	printf("data cnt = %d\n",p->numData);
+
+	//OSAL_free(loadData);
+	return 3 + (p->numData * 4); // 7 = interval(1), nData(1), validPos(1), refValue(4)
+}
 int main(int argc, char *argv[])
 {
 	flash_save_data_t save_data[90*24]={0,};
@@ -1197,7 +1277,7 @@ int main(int argc, char *argv[])
 		//printf("%d-%d-%d:%d meter data[%d]= %ld(%08lx)\n",save_data[i].year, save_data[i].mon, save_data[i].day,save_data[i].hour,i, meter_add, temp_trans);
 		//memcpy(save_data[i].meterValue, &temp_trans, sizeof(uint32));
 		meter_data.data_b32 = temp_trans;
-		#if 1
+		#if 0
 		if((i%3)==0)
 		{
 			memset(save_data[i].meterValue, 0xff, sizeof(uint8)*4);
@@ -1324,19 +1404,19 @@ int main(int argc, char *argv[])
 	
 	LastAckDate.year = 24;
 	LastAckDate.mon = 3;
-	LastAckDate.day = 14;
-	LastAckDate.hour = 3;
+	LastAckDate.day = 15;
+	LastAckDate.hour = 9;
 	printf("input storedata\n");
 	memset(&StroeUnit, 0, sizeof(MeterUnitData_t));
 	StroeUnit.year = 24;
 	StroeUnit.mon = 3;
 	StroeUnit.day = 15;
-	StroeUnit.hour = 11;
+	StroeUnit.hour = 10;
 	StroeUnit.min = 45;
 	StroeUnit.sec = 22;
 	StroeUnit.isTimeSync = 0;
 	StroeUnit.meterStatus = 0x00;
-	#if 1
+	#if 0
 	StroeUnit.meterData[0]= 0xFF;
 	StroeUnit.meterData[1]= 0xFF;
 	StroeUnit.meterData[2]= 0xFF;
@@ -1352,15 +1432,20 @@ int main(int argc, char *argv[])
 	char tempdebug[1024]={0,};
 	int tempdebugcnt = 0;
 	int lens = 0;
-	lens = insert_multiData((NbiotMeterData_t *)msg);
+	//lens = insert_multiData((NbiotMeterData_t *)msg);
+	lens = insert_multiData1((NbiotMeterData1_t *)msg);
 	printf("length = %d\n", lens);
 	msg[lens] = 0;
-	printf("msg:%s\n", msg);
-	#if 0
+	//printf("msg:%s\n", msg);
+	#if 1
+	memset(tempdebug, 0, sizeof(tempdebug));
 	for(int cnt = 0; cnt< lens; cnt++)
 	{
-		tempdebugcnt = sprintf(tempdebug,"%s%02x",msg[cnt]);
+		//tempdebugcnt = snprintf(tempdebug,512,"%s%02x",tempdebug, msg[cnt]);
+		printf("%02x", msg[cnt]);
 	}
+	//tempdebug[tempdebugcnt] = 0;
+	//printf("msg:%s\n", tempdebug);
 	#endif
 	return 0;
 }
