@@ -1065,7 +1065,7 @@ static int insert_multiData(NbiotMeterData_t *p)
 
 	Date_t now;
 	dataTimeS_t nowdate;
-	uint8 i, posval = 0;
+	uint8 i, posval = 0, refplus =0, datacnt =0;;
 	uint32 *loadData = NULL;
 	MeterUnitData_t *lastUnit;
 	uint32 prevValue = 0;
@@ -1089,60 +1089,70 @@ static int insert_multiData(NbiotMeterData_t *p)
 	printf("interval = %d\n", p->interval);
 	printf("data count = %d\n", p->numData);
 	//loadData = (uint32 *)OSAL_malloc(sizeof(uint32) * p->numData);
-	loadData = (uint32 *)malloc(sizeof(uint32) * p->numData);
-	memset(loadData, 0, sizeof(uint32) * p->numData);
-	p->numData = meterList(nowdate, LastAckDate, p->interval, loadData);
 	lastUnit = METER_getStoredData();
 	p->refValuePos = 0;
-
-	if (METER_isAllFF(lastUnit->meterData, 4) == FALSE) {
-		bcd2int(lastUnit->meterData, &prevValue, 4);
-		memcpy(p->refValue, &prevValue, 4);
-		printf("ref velue1 : %ld\n", prevValue);
-	}
-	else
-	{
-		p->refValuePos++;
-		for(i=0;  i<p->numData; i++)
-		{
-			if((loadData[i]&0x00ffffffff)==0xffffffff)
-			{
-				p->refValuePos++;
-			}
-			else
-			{
-				break;
-			}
-		}
-		memcpy(p->refValue, &loadData[i], 4);
-		prevValue = loadData[i];
-		posval = i+1;
-		printf("ref velue2[%d] : %ld\n", i, loadData[i]);
-	}
 	memset(p->valueDiff[0], 0, 2);
 
-	printf("refvalue Pos : %d, cnt : %d\n",p->refValuePos , posval);
-	p->numData -= p->refValuePos;
-	for(i=0; i<(p->numData); i++)
+	if(p->numData > 0)
 	{
-		if((loadData[i + p->refValuePos]&0x00ffffffff)==0xffffffff)
-		{
-			memset(p->valueDiff[i], 0xFF, 2);
+		loadData = (uint32 *)malloc(sizeof(uint32) * p->numData);
+		memset(loadData, 0, sizeof(uint32) * p->numData);
+		datacnt = meterList(nowdate, LastAckDate, p->interval, loadData);
+
+		if (METER_isAllFF(lastUnit->meterData, 4) == FALSE) {
+			bcd2int(lastUnit->meterData, &prevValue, 4);
+			memcpy(p->refValue, &prevValue, 4);
+			memset(p->valueDiff[0], 0x00, 2);
 		}
 		else
 		{
-			if(prevValue < loadData[i + p->refValuePos])
+			memset(p->valueDiff[0], 0xFF, 2);
+			p->refValuePos++;
+			for(i=0;  i<datacnt; i++)
 			{
-				memset(p->valueDiff[i], 0, 2);
+				if((loadData[i]&0x00ffffffff)==0xffffffff)
+				{
+					p->refValuePos++;
+					memset(p->valueDiff[i+1], 0xFF, 2);
+				}
+				else
+					break;
+			}
+			memcpy(p->refValue, &loadData[i], 4);
+			memset(p->valueDiff[i+1], 0x00, 2);
+			//prevValue = loadData[i];
+		}
+		
+		//datacnt -= p->refValuePos;
+		for(i++; i<datacnt; i++)
+		{
+			if((loadData[i]&0x00ffffffff)==0xffffffff)
+			{
+				memset(p->valueDiff[i + 1], 0xFF, 2);
 			}
 			else
 			{
-				diff = prevValue - loadData[i + p->refValuePos];
-				prevValue = loadData[i + p->refValuePos];
-				memcpy(p->valueDiff[i], &diff, 2);
-				printf("diff[%2d] : %3d \n", i, diff);
+				if(prevValue < loadData[i])
+				{
+					memset(p->valueDiff[i + 1], 0, 2);
+				}
+				else
+				{
+					diff = prevValue - loadData[i];
+					prevValue = loadData[i];
+					memcpy(p->valueDiff[i+1], &diff, 2);
+				}
 			}
 		}
+		p->numData++;
+		free(loadData);
+	}
+	else
+	{
+		bcd2int(lastUnit->meterData, &prevValue, 4);
+		memcpy(p->refValue, &prevValue, 4);
+		memset(p->valueDiff[0], 0xFF, 2);
+		p->numData=1;
 	}
 	
 	printf("diff data : \n");
@@ -1160,7 +1170,7 @@ static int insert_multiData1(NbiotMeterData1_t *p)
 {
 	Date_t now;
 	dataTimeS_t nowdate;
-	uint8 i, refplus = 0;
+	uint8 i, refplus = 0, data_en = 0;
 	uint32 *loadData = NULL;
 	MeterUnitData_t *lastUnit;
 	uint32 prevValue = 0;
@@ -1179,51 +1189,61 @@ static int insert_multiData1(NbiotMeterData1_t *p)
 	p->interval = get_message_mode(nowdate, LastAckDate);
 	p->numData = CheckMeterDataCount(nowdate, LastAckDate, p->interval);
 	
-	loadData = (uint32 *)malloc(sizeof(uint32) * p->numData);
-	memset(loadData, 0, sizeof(uint32) * p->numData);
-	p->numData = meterList(nowdate, LastAckDate, p->interval, loadData);
 	lastUnit = METER_getStoredData();
 	p->refValuePos = 0;
-	printf("data cnt = %d\n",p->numData);
 
-	if (METER_isAllFF(lastUnit->meterData, 4) == FALSE) {
-		bcd2int(lastUnit->meterData, &prevValue, 4);
-		memcpy(p->valueDiff[0], &prevValue, 4);
-		refplus = 1;
-		printf("ref velue1 : %ld\n", prevValue);
-	}
-	else
+	if(p->numData > 0)
 	{
-		p->refValuePos++;
-		for(i=0;  i<p->numData; i++)
-		{
-			if((loadData[i]&0x00ffffffff)==0xffffffff)
-			{
-				p->refValuePos++;
-			}
-			else
-				break;
-		}
-		memcpy(p->valueDiff[0], &loadData[i], 4);
-		printf("ref velue2[%d] : %ld\n", i, loadData[i]);
-	}
+		loadData = (uint32 *)malloc(sizeof(uint32) * p->numData);
+		memset(loadData, 0, sizeof(uint32) * p->numData);
+		p->numData = meterList(nowdate, LastAckDate, p->interval, loadData);
 
-	p->numData -= p->refValuePos;
-	for(i=0; i<p->numData; i++)
-	{
-		if((loadData[i + p->refValuePos]&0x00ffffffff)==0xffffffff)
-		{
-			memset(p->valueDiff[i+1], 0xFF, 2);
+		if (METER_isAllFF(lastUnit->meterData, 4) == FALSE) {
+			bcd2int(lastUnit->meterData, &prevValue, 4);
+			memcpy(p->valueDiff[0], &prevValue, 4);
+			refplus = 1;
 		}
 		else
 		{
-			memcpy(p->valueDiff[i+1], &loadData[i + p->refValuePos], 4);
-			printf("ref velue2[%d] : %ld\n", i+1, loadData[i+1]);
-			
+			memset(p->valueDiff[0], 0xFF, 4);
+			p->refValuePos++;
+			for(i=0;  i<p->numData; i++)
+			{
+				if((loadData[i]&0x00ffffffff)==0xffffffff)
+				{
+					p->refValuePos++;
+					memset(p->valueDiff[i+1], 0xFF, 4);
+				}
+				else
+					break;
+			}
+			memcpy(p->valueDiff[i+1], &loadData[i], 4);
 		}
+
+		//p->numData -= p->refValuePos;
+		for(i++; i<p->numData; i++)
+		{
+			if((loadData[i]&0x00ffffffff)==0xffffffff)
+			{
+				memset(p->valueDiff[i+1], 0xFF, 4);
+			}
+			else
+			{
+				memcpy(p->valueDiff[i+1], &loadData[i], 4);
+			}
+		}
+		//p->numData+=refplus;
+		p->numData++;
+		printf("last data cnt=%d\n",p->numData);
+
+		free(loadData);
 	}
-	p->numData+=refplus;
-	printf("data cnt = %d\n",p->numData);
+	else
+	{
+		bcd2int(lastUnit->meterData, &prevValue, 4);
+		memcpy(p->valueDiff[0], &prevValue, 4);
+		p->numData = 1;
+	}
 
 	//OSAL_free(loadData);
 	return 3 + (p->numData * 4); // 7 = interval(1), nData(1), validPos(1), refValue(4)
@@ -1432,8 +1452,8 @@ int main(int argc, char *argv[])
 	char tempdebug[1024]={0,};
 	int tempdebugcnt = 0;
 	int lens = 0;
-	//lens = insert_multiData((NbiotMeterData_t *)msg);
-	lens = insert_multiData1((NbiotMeterData1_t *)msg);
+	lens = insert_multiData((NbiotMeterData_t *)msg);
+	//lens = insert_multiData1((NbiotMeterData1_t *)msg);
 	printf("length = %d\n", lens);
 	msg[lens] = 0;
 	//printf("msg:%s\n", msg);
