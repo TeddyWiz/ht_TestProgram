@@ -161,6 +161,7 @@ map_sector_t g_Map;
 uint8 sortMapdata[90];
 Date_t now;
 
+dataTimeS_t LastdataTime={0,};
 static uchar cal_checksum(uchar *p, int len)
 {
 	uchar checksum = 0;
@@ -317,6 +318,25 @@ static void hex2binary(uint8 hex, char *binary)
 		}
 #endif
 	}
+}
+uint8 FindHour(uint8 datapos)
+{
+	uint8 tempSect = datapos / 5;
+	uint8 tempUnit = datapos % 5;
+	printf("sect =%d, Unit= %d\n", tempSect, tempUnit);
+	data_sector_t *pData = &g_save_data[tempSect];
+	LastdataTime.year = pData->dataUnit[tempUnit].year;
+	LastdataTime.mon = pData->dataUnit[tempUnit].mon;
+	LastdataTime.day = pData->dataUnit[tempUnit].day;
+	for(int i=0; i<24; i++)
+	{
+		if(((pData->dataUnit[tempUnit].data[i][0]!=0)&&(pData->dataUnit[tempUnit].data[i][1]!=0)&& \
+		(pData->dataUnit[tempUnit].data[i][2]!=0)&&(pData->dataUnit[tempUnit].data[i][3]!=0)))
+		{
+			return i;
+		}
+	}
+	return 23;
 }
 static int get_dataSavePos(uint8 year, uint8 mon, uint8 day)
 {
@@ -539,6 +559,18 @@ uint8 sortMapSector(map_sector_t *pMap)
 		if (isValidDate(tempMap->year, tempMap->mon, tempMap->day)==0)
 			break;
 	}
+	#if 0
+	if(i==0)
+	{
+		memset(&LastdataTime, 0, sizeof(LastdataTime));
+	}
+	else
+	{
+		LastdataTime.year = pMap->unitMap[sortMapdata[i-1]].year;
+		LastdataTime.mon = pMap->unitMap[sortMapdata[i-1]].mon;
+		LastdataTime.day = pMap->unitMap[sortMapdata[i-1]].day;
+	}
+	#endif
 	printf("nday = %d\n", i);
 	return i;
 }
@@ -777,16 +809,17 @@ uint8 LastMonthDays(dataTimeS_t inDate)
 uint8 get_message_mode(dataTimeS_t now, dataTimeS_t LastAck)
 {
 	uint8 i, ListData[6]={1,2,3,4,6,12};
-	uint16 nowDays=0, LastDays=0;
-	char tempTime = 0;
+	int nowDays=0, LastDays=0;
+	int tempTime = 0;
 	
 	nowDays = dateToDays(now);
 	LastDays = dateToDays(LastAck);
-	//printf("now days : %d, Last days : %d \n", nowDays, LastDays);
+	printf("now days : %d, Last days : %d \n", nowDays, LastDays);
 	printf("diff days : %d \n", nowDays - LastDays);
 	nowDays -= LastDays;
-	//printf("diff : %d\n", nowDays);
+	printf("diff : %d\n", nowDays);
 	tempTime = now.hour-LastAck.hour;
+	printf("diff time : %d\n", tempTime);
 	if((tempTime)<0)
 	{
 		nowDays--;
@@ -824,7 +857,7 @@ uint8 get_message_mode(dataTimeS_t now, dataTimeS_t LastAck)
 
 dataTimeS_t decreaseDate(dataTimeS_t Indata, uint8 mode)
 {
-	dataTimeS_t ret = {0,};
+	//dataTimeS_t ret = {0,};
 	if((Indata.hour - mode) < 0)
 	{
 		if(Indata.day == 1)
@@ -850,8 +883,9 @@ dataTimeS_t decreaseDate(dataTimeS_t Indata, uint8 mode)
 	else
 		Indata.hour -= mode;
 	
-	memcpy(&ret, &Indata, sizeof(dataTimeS_t));
-	return ret;
+	//memcpy(&ret, &Indata, sizeof(dataTimeS_t));
+	//return ret;
+	return Indata;
 }
 
 uint8 CheckSectMapSort(dataTimeS_t Indata)
@@ -881,6 +915,10 @@ uint8 CheckMeterDataCount(dataTimeS_t start, dataTimeS_t Last, uint8 mode)
 			return len;
 		}
 		len++;
+	}
+	if(len>23)
+	{
+		return 23;
 	}
 	return len;
 }
@@ -938,7 +976,10 @@ uint8 meterList(dataTimeS_t Indata, dataTimeS_t LastAck, uint8 mode, uint32 *dat
 		if(datapos == 0xFF)
 		{
 			printf("not found data \r\n");
-			break;
+			data++;
+			Len++;
+			//return 0xFF;
+			continue;
 		}
 #if 0
 		for(i=0; i<91; i++)
@@ -1000,7 +1041,10 @@ uint8 meterList(dataTimeS_t Indata, dataTimeS_t LastAck, uint8 mode, uint32 *dat
 				//bcd2int(pData->dataUnit[tempUnit].data[tempdate.hour], data, 4);
 				memcpy(data, pData->dataUnit[tempUnit].data[tempdate.hour], 4);
 			}
-			
+			if(Len > 23)
+			{
+				return 23;
+			}
 			data++;
 		}
 		while ((tempdate.hour - mode)>=0);
@@ -1189,7 +1233,7 @@ static int insert_multiData(NbiotMeterData_t *p)
 	//OSAL_free(loadData);
 return 7 + (p->numData * 2); // 7 = interval(1), nData(1), validPos(1), refValue(4)
 }
-
+#define test1  0
 static int insert_multiData1(NbiotMeterData1_t *p)
 {
 	//Date_t now;
@@ -1233,11 +1277,16 @@ static int insert_multiData1(NbiotMeterData1_t *p)
 		p->numData = meterList(nowdate, LastAckDate, p->interval, loadData);
 
 		if (METER_isAllFF(lastUnit->meterData, 4) == FALSE) {
-			//bcd2int(lastUnit->meterData, &prevValue, 4);
+			#if test1
+			nowValue = 0;
+			bcd2int(lastUnit->meterData, &nowValue, 4);
+			memcpy(p->valueDiff[0], &nowValue, 4);
+			#else
 			bcd2int(lastUnit->meterData, (unsigned long *)p->valueDiff[0], 4);
+			#endif
+			//
 			//printf("pre 0 : %08lx\n", prevValue);
 			//printf("pre_0 : %02x%02x%02x%02x\r\n", p->valueDiff[0][0], p->valueDiff[0][1], p->valueDiff[0][2], p->valueDiff[0][3]);
-			//memcpy(p->valueDiff[0], &prevValue, 4);
 			//memcpy(p->valueDiff[0], lastUnit->meterData, 4);
 			
 			refplus = 1;
@@ -1256,9 +1305,17 @@ static int insert_multiData1(NbiotMeterData1_t *p)
 				else
 					break;
 			}
+			
 			//memcpy(p->valueDiff[i+1], &loadData[i], 4);
 			//bcd2int(lastUnit->meterData, (unsigned long *)p->valueDiff[i+1], 4);
+			//
+			#if test1
+			nowValue=0;
+			bcd2int((unsigned char *)&loadData[i], &nowValue, 4);
+			memcpy(p->valueDiff[i+1], &nowValue, 4);
+			#else
 			bcd2int((unsigned char *)&loadData[i], (unsigned long *)&p->valueDiff[i+1], 4);
+			#endif
 			i++;
 		}
 
@@ -1274,11 +1331,17 @@ static int insert_multiData1(NbiotMeterData1_t *p)
 			{
 				//memcpy(p->valueDiff[i+1], &loadData[i], 4);
 				//prevValue = 0;
-				//bcd2int((unsigned char *)&loadData[i], &prevValue, 4);
-				bcd2int((unsigned char *)&loadData[i], (unsigned long *)&p->valueDiff[i+1], 4);
+				
+				//
 				//printf("pre1 %d : %08lx\n", i, prevValue);
 				//printf("pre2 %d : %02x%02x%02x%02x\r\n", i, p->valueDiff[i+1][0], p->valueDiff[i+1][1], p->valueDiff[i+1][2], p->valueDiff[i+1][3]);
-				//memcpy(p->valueDiff[i+1], &prevValue, 4);
+				#if test1
+				nowValue=0;
+				bcd2int((unsigned char *)&loadData[i], &nowValue, 4);
+				memcpy(p->valueDiff[i+1], &nowValue, 4);
+				#else
+				bcd2int((unsigned char *)&loadData[i], (unsigned long *)&p->valueDiff[i+1], 4);
+				#endif
 				//printf("pro3 %d : %02x%02x%02x%02x\r\n", i, p->valueDiff[i+1][0], p->valueDiff[i+1][1], p->valueDiff[i+1][2], p->valueDiff[i+1][3]);
 				
 			}
@@ -1291,10 +1354,15 @@ static int insert_multiData1(NbiotMeterData1_t *p)
 	}
 	else
 	{
-		//bcd2int(lastUnit->meterData, &prevValue, 4);
-		//memcpy(p->valueDiff[0], &prevValue, 4);
+		//
 		//memcpy(p->valueDiff[0], lastUnit->meterData, 4);
+		#if test1
+		prevValue = 0;
+		bcd2int(lastUnit->meterData, &prevValue, 4);
+		memcpy(p->valueDiff[0], &prevValue, 4);
+		#else
 		bcd2int(lastUnit->meterData, (unsigned long *)p->valueDiff[0], 4);
+		#endif
 		p->numData = 1;
 	}
 	printf("msg data cnt : %2d \nposition : %d\n", p->numData, p->refValuePos);
@@ -1323,9 +1391,9 @@ int main(int argc, char *argv[])
 	memset(&g_Map, 0xFF, sizeof(map_sector_t));
 	srand(time(NULL));
 	printf("start save data input\n");
-	m=23;
-	j= 12;
-	k=27;
+	m=24;
+	j=6;
+	k=11;
 	//for(i=0; i< 90*24; i++)
 	for(i=0; i< 80*24; i++)
 	{
@@ -1356,7 +1424,7 @@ int main(int argc, char *argv[])
 		//printf("%d-%d-%d:%d meter data[%d]= %ld(%08lx)\n",save_data[i].year, save_data[i].mon, save_data[i].day,save_data[i].hour,i, meter_add, temp_trans);
 		//memcpy(save_data[i].meterValue, &temp_trans, sizeof(uint32));
 		meter_data.data_b32 = temp_trans;
-		#if 1
+		#if 0
 		if((i%3)==0)
 		{
 			memset(save_data[i].meterValue, 0xff, sizeof(uint8)*4);
@@ -1382,7 +1450,16 @@ int main(int argc, char *argv[])
 	//resetSortMap();
 	display_sector(0);
 	map_sector_t pMap;
-	sortMapSector(&pMap);
+	int t_day = sortMapSector(&pMap);
+	LastdataTime.hour = FindHour(sortMapdata[t_day-1]);
+
+	printf("Last data time : %02d-%02d-%02d:%02d\n",LastdataTime.year,\
+	LastdataTime.mon, LastdataTime.day, LastdataTime.hour);
+
+	printf("LastData Time %02d-%02d-%02d:%02d\n", LastdataTime.year, \
+	LastdataTime.mon, LastdataTime.day, LastdataTime.hour);
+
+
 	display_sector(1);
 	//printf("display 0 Sector = %02d, uinit = %02d\n", sortMapdata[0]/5, sortMapdata[0]%5);
 	//dataFlash_displayDataSector(sortMapdata[0]/5);
@@ -1391,15 +1468,21 @@ int main(int argc, char *argv[])
 	
 	uint8 tempMode = 0;
 	tempNow.year = 24;
-	tempNow.mon = 1;
-	tempNow.day = 1;
-	tempNow.hour = 6;
+	tempNow.mon = 6;
+	tempNow.day = 13;
+	tempNow.hour = 00;
 
-	tempLastA.year = 23;
-	tempLastA.mon = 12;
-	tempLastA.day = 29;
-	tempLastA.hour = 6;
-
+#if 1
+	tempLastA.year = 24;
+	tempLastA.mon = 6;
+	tempLastA.day = 11;
+	tempLastA.hour = 17;
+#else
+	tempLastA.year = 0;
+	tempLastA.mon = 0;
+	tempLastA.day = 0;
+	tempLastA.hour = 0;
+#endif
 #if 0
 	printf("Last %02d-%02d-%02d %02dh\r\n", tempLastA.year, tempLastA.mon, tempLastA.day, tempLastA.hour);
 	printf("Now %02d-%02d-%02d %02dh\r\n", tempNow.year, tempNow.mon, tempNow.day, tempNow.hour);
@@ -1470,9 +1553,9 @@ int main(int argc, char *argv[])
 #endif
 	dataTimeS_t testnow;
 	now.year = 2024;
-	now.mon = 3;
-	now.day = 15;
-	now.hour = 16;
+	now.mon = 6;
+	now.day = 13;
+	now.hour = 00;
 	now.min = 45;
 	now.sec = 22;
 
@@ -1487,11 +1570,24 @@ int main(int argc, char *argv[])
 	data_sector_t *pData = &g_save_data[tempSect1];
 
 	
-	
+	#if 1
 	LastAckDate.year = 24;
-	LastAckDate.mon = 3;
-	LastAckDate.day = 15;
-	LastAckDate.hour = 9;
+	LastAckDate.mon = 6;
+	LastAckDate.day = 12;
+	LastAckDate.hour = 17;
+	#else
+	#if 1
+	LastAckDate.year = LastdataTime.year;
+	LastAckDate.mon = LastdataTime.mon;
+	LastAckDate.day = LastdataTime.day;
+	LastAckDate.hour = LastdataTime.hour; 
+	#else
+	LastAckDate.year = 0;
+	LastAckDate.mon = 0;
+	LastAckDate.day = 0;
+	LastAckDate.hour = 0;
+	#endif
+	#endif
 
 	printf("input storedata\n");
 	memset(&StroeUnit, 0, sizeof(MeterUnitData_t));
@@ -1503,7 +1599,7 @@ int main(int argc, char *argv[])
 	StroeUnit.sec = 22;
 	StroeUnit.isTimeSync = 0;
 	StroeUnit.meterStatus = 0x00;
-	#if 1
+	#if 0
 	StroeUnit.meterData[0]= 0xFF;
 	StroeUnit.meterData[1]= 0xFF;
 	StroeUnit.meterData[2]= 0xFF;
@@ -1538,6 +1634,7 @@ int main(int argc, char *argv[])
 	#endif
 	printf("\r\nver 1.7\n");
 	//lens = insert_multiData((NbiotMeterData_t *)msg);
+	memset(msg, 0, sizeof(msg));
 	lens = insert_multiData1((NbiotMeterData1_t *)msg);
 	printf("length = %d\n", lens);
 	msg[lens] = 0;
