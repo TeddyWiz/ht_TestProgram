@@ -45,7 +45,9 @@ int printf_ts(const char *format, ...)
 
 	return 0;
 }
-#define TEST "test1"
+#define TEST "test"
+#define UND_BAR "_"
+#define MSG "msg"
 #define FINISH "finish"
 #define SP " "
 #define LF_D "\r\n"
@@ -53,9 +55,15 @@ int printf_ts(const char *format, ...)
 int main() {
     // Write C code here
     int cnt = 20;
+	char *matchstr = NULL;
     char testStr[] = "hello";
+	char testmsg1[] = "hello_test_msg_device";
     // Write C code here
     printf(TEST SP FINISH" %d : %s " LF_D, cnt, testStr);
     printf_ts(TEST SP FINISH" %d : %s " LF_D, cnt, testStr);
+	matchstr = strstr(testmsg1, UND_BAR MSG);
+    printf("msg : %s\n", testmsg1);
+    printf("find : %s\n", matchstr);
+
     return 0;
 }
