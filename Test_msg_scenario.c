@@ -1554,8 +1554,8 @@ int main(int argc, char *argv[])
 	dataTimeS_t testnow;
 	now.year = 2024;
 	now.mon = 6;
-	now.day = 13;
-	now.hour = 00;
+	now.day = 14;
+	now.hour = 11;
 	now.min = 45;
 	now.sec = 22;
 
@@ -1573,8 +1573,8 @@ int main(int argc, char *argv[])
 	#if 1
 	LastAckDate.year = 24;
 	LastAckDate.mon = 6;
-	LastAckDate.day = 12;
-	LastAckDate.hour = 17;
+	LastAckDate.day = 13;
+	LastAckDate.hour = 9;
 	#else
 	#if 1
 	LastAckDate.year = LastdataTime.year;
