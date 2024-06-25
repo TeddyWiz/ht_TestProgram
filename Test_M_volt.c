@@ -33,7 +33,7 @@ int main() {
 	    {
 	    	temp1 = voltTrans(i);
 	    	temp2 = voltTrans1(i);
-	    	printf("[%02d] 1 : %2d, 2 : %2d\n", i, temp1, temp2);
+	    	printf("[%02d] 1 : %2d, 2 : %2d \n", i, temp1, temp2);
 	    }
 	printf("Try programiz.pro");
 	  

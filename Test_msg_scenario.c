@@ -1036,6 +1036,10 @@ uint8 meterList(dataTimeS_t Indata, dataTimeS_t LastAck, uint8 mode, uint32 *dat
 				memset(data, 0xFFFFFFFF, sizeof(uint32));
 				//printf("data 0xFFFFFFFF\n");
 			}
+			else if((tempData[0]==0x00)&&(tempData[1]==0x00)&&(tempData[2]==0x00)&&(tempData[3]==0x00))
+			{
+				memset(data, 0xFFFFFFFF, sizeof(uint32));
+			}
 			else
 			{
 				//bcd2int(pData->dataUnit[tempUnit].data[tempdate.hour], data, 4);
@@ -1393,7 +1397,7 @@ int main(int argc, char *argv[])
 	printf("start save data input\n");
 	m=24;
 	j=6;
-	k=11;
+	k=14;
 	//for(i=0; i< 90*24; i++)
 	for(i=0; i< 80*24; i++)
 	{
@@ -1554,8 +1558,8 @@ int main(int argc, char *argv[])
 	dataTimeS_t testnow;
 	now.year = 2024;
 	now.mon = 6;
-	now.day = 14;
-	now.hour = 11;
+	now.day = 18;
+	now.hour = 17;
 	now.min = 45;
 	now.sec = 22;
 
@@ -1573,8 +1577,8 @@ int main(int argc, char *argv[])
 	#if 1
 	LastAckDate.year = 24;
 	LastAckDate.mon = 6;
-	LastAckDate.day = 13;
-	LastAckDate.hour = 9;
+	LastAckDate.day = 17;
+	LastAckDate.hour = 11;
 	#else
 	#if 1
 	LastAckDate.year = LastdataTime.year;
@@ -1588,6 +1592,12 @@ int main(int argc, char *argv[])
 	LastAckDate.hour = 0;
 	#endif
 	#endif
+	memset(pData->dataUnit[tempUnit1].data[16], 0, 4);
+	memset(pData->dataUnit[tempUnit1].data[15], 0, 4);
+	memset(pData->dataUnit[tempUnit1].data[14], 0, 4);
+	memset(pData->dataUnit[tempUnit1].data[12], 0, 4);
+	memset(pData->dataUnit[tempUnit1].data[11], 0, 4);
+	memset(pData->dataUnit[tempUnit1].data[10], 0, 4);
 
 	printf("input storedata\n");
 	memset(&StroeUnit, 0, sizeof(MeterUnitData_t));
