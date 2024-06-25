@@ -121,6 +121,8 @@ int main(int argc, char *argv[])
 	temp_buf[2] = tesp_buff3;
 	int dataLen = 0, r_Len=0;
 	char ACKADDR[12];
+	//FOTA2 테스튼 Port : 36941
+
 	for(j=0;j<3;j++)
 	{
 		p = strstr(temp_buf[j], "36931");
