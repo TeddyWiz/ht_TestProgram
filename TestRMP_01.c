@@ -48,17 +48,45 @@ char addHeadMeterData(MeterData** head, uint16 data) {
 	*head = newNode;
 	return 0;
 }
-void allClearMeterData(MeterData** head)
+void allClearMeterData(MeterData* head)
 {
-	MeterData *HeadNode = *head;
-	MeterData *NextNode = HeadNode->Next;
-	while(HeadNode != NULL)
+	MeterData *TempNode;
+	while(head != NULL)
 	{
-		free(HeadNode);
-		HeadNode = NextNode;
-		NextNode = HeadNode->Next;
+		TempNode = head;
+		head = head->Next;
+		TempNode->Next = NULL;
+		free(TempNode);
+		TempNode = NULL;
 	}
 }
+char findRemoveData(MeterData **head, uint16 data)
+{
+	MeterData *temp = *head;
+	MeterData *prev = NULL;
+
+    // 헤드 노드가 삭제할 데이터인 경우
+    if (temp != NULL && temp->num == data) {
+        *head = temp->Next; // 헤드를 다음 노드로 변경
+        free(temp); // 현재 헤드 메모리 해제
+        return 1;
+    }
+
+    // 삭제할 데이터를 찾을 때까지 리스트 탐색
+    while (temp != NULL && temp->num != data) {
+        prev = temp;
+        temp = temp->Next;
+    }
+
+    // 데이터가 리스트에 없는 경우
+    if (temp == NULL) return 2;
+
+    // 노드를 리스트에서 제거
+    prev->Next = temp->Next;
+    free(temp); // 노드 메모리 해제
+	return 0;
+}
+
 void printList(MeterData* head) {
 	int cnt = 0;
     MeterData* temp = head;
@@ -82,7 +110,11 @@ int main(int argc, char *argv[])
 	//printf("Next Addr : 0x%lx\n", HeadNode->Next);
 	addHeadMeterData(&HeadNode, 6);
 	printList(HeadNode);
-	allClearMeterData(&HeadNode);
+	findRemoveData(&HeadNode, 4);
+	printf("test find remove\n");
+	printList(HeadNode);
+
+	allClearMeterData(HeadNode);
 	printf("clear node result\n");
 	printList(HeadNode);
 	return 0;
