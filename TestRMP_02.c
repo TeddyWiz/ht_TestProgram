@@ -6,6 +6,13 @@
 #define uint8	unsigned char
 #define uint32 unsigned long
 
+#define YEAR_MIN 2017
+#define YEAR_MAX 2100
+
+#define TRUE 1
+
+#define CAL_COUNT_TIME_UNIT(x) 		(x<24? 1: x<48? 2: x<72? 3: x<96? 4: x<144? 6: x<288? 12: 24)
+
 //structure
 typedef struct MeterData{
 	uint16 num;
@@ -17,6 +24,22 @@ typedef struct MeterData{
 	struct MeterData *Next;
 }MeterData;
 
+
+typedef struct {
+	uint16 year; // yearH, yearL
+	uint8 mon;
+	uint8 day;
+	uint8 hour;
+	uint8 min;
+	uint8 sec;
+	uint8 reserved;
+} Date_t;
+
+typedef struct {
+	uint8 battery : 2, // terminal battery
+		lowBatt : 1, // meter battery
+		fArrow : 1, rArrow : 1, m3 : 1, notUsed : 1, leak : 1;
+} LcdIcon_t;
 
 typedef struct {
 	uint8 year;
@@ -31,13 +54,10 @@ typedef struct {
 	uint8 st[2];
 	uint8 rt[2];
 	uint8 flowData[4];
-	//LcdIcon_t icon;
-// EC_RUDY202
+	LcdIcon_t icon;
     uint8 temperature[2];
     uint8 pressure[2];
-// end of EC_RUDY202
 } MeterUnitData_t;
-
 
 typedef struct {
 	uint16 nData;
@@ -49,6 +69,15 @@ typedef struct {
 	uint8 meterSerial[4];
 	MeterUnitData_t unit;
 } MeterStoredData_t;
+
+typedef struct {
+	uint8 year;
+	uint8 mon;
+	uint8 day;
+	uint8 hour;
+	uint8 min;
+	uint8 sec;
+} MeterTimeData_t;
 
 
 typedef union{
@@ -64,6 +93,8 @@ typedef union{
 //gloval data
 MeterData *HeadNode = NULL;
 MeterStoredData_t StoredMeterData;
+MeterTimeData_t meterPreTime;
+MeterTimeData_t meterSaveTime;
 
 //Linked List Function
 // 새로운 노드 생성 함수
@@ -354,17 +385,127 @@ uint8 CheckSaveMeterData(uint16 num)
 	}
 	return saveFlag;
 }
+
+
+int RTC_isValidDate(Date_t *date)
+{
+	int valid = 0;
+
+	do {
+		if (date->year < YEAR_MIN || date->year > YEAR_MAX) {
+			break;
+		}
+
+		if (date->mon < 1 || date->mon > 12) {
+			break;
+		}
+
+		if (date->day < 1 || date->day > 31) {
+			break;
+		}
+
+		if (date->hour > 23 || date->min > 59 || date->sec > 59) {
+			break;
+		}
+
+		valid = 1;
+
+	} while (0);
+
+	return valid;
+}
+
+void insertDateToData(Date_t *pDate, MeterTimeData_t *pData, uint8 isIgnoreSec)
+{
+	if (RTC_isValidDate(pDate)) {
+		// Data의 year는 RTC의 year에서 2000을 빼서 사용
+		pData->year = pDate->year - 2000;
+		pData->mon = pDate->mon;
+		pData->day = pDate->day;
+		pData->hour = pDate->hour;
+		pData->min = pDate->min;
+		pData->sec = (isIgnoreSec == TRUE) ? 0 : pDate->sec;
+		//pData->isTimeSync = RTC_isTimeSync();
+	}
+}
+
+int saveMeterTime(uint16 num, Date_t now)
+{
+	uint8 saveFlag = 0;
+	insertDateToData(&now, &meterPreTime, 0);
+	if(num < 24){
+		saveFlag = 1;
+	}
+	else if(num < 48){
+		if((num%2)==0){
+			saveFlag = 1;
+		}
+	}
+	else if(num < 72){
+		if((num%3)==0){
+			saveFlag = 1;
+		}
+	}
+	else if(num < 96){
+		if((num%4)==0){
+			saveFlag = 1;
+		}
+	}
+	else if(num < 144){
+		if((num%6)==0){
+			saveFlag = 1;
+		}
+	}
+	else if(num < 288){
+		if((num%12)==0){
+			saveFlag = 1;
+		}
+	}
+	else{
+		if((num%24)==0){
+			saveFlag = 1;
+		}
+	}
+	if(saveFlag){
+		insertDateToData(&now, &meterSaveTime, 0);
+		return 1;
+	}
+	else{
+		return 0;
+	}
+
+	return 0;
+}
+
 int tempSaveNum[500];
 int tempSaveindex=0;
 
 void Unit2AddMeterData(MeterUnitData_t *pUnit)
 {
 	uint8 saveFlag = 1;
+	Date_t now={.year=2024, .mon=7, .day=22, .hour=0, .min=0, .sec=1};
 	saveFlag = CheckSaveMeterData(StoredMeterData.nData);
+	if(saveMeterTime(StoredMeterData.nData, now) ==1)
+	{
+		printf("now Time : %2d-%2d-%2d %2d:%2d:%2d \n", now.year, now.mon, now.day,\
+		now.hour, now.min, now.sec);
+		printf("save Time : %2d-%2d-%2d %2d:%2d:%2d\n", meterSaveTime.year, \
+		meterSaveTime.mon, meterSaveTime.day, meterSaveTime.hour, meterSaveTime.min,\
+		meterSaveTime.sec );
+	}
 	if(saveFlag)
 	{
+		now.hour= (StoredMeterData.nData/60);
+		now.min = (StoredMeterData.nData%60);
+		if(now.hour > 24)
+		{
+			now.day = now.hour/24;
+			now.hour = now.hour % 24;
+		}
+
 		tempSaveNum[tempSaveindex++] = StoredMeterData.nData;
 		printf("s: ");
+		
 		addHeadMeterData(&HeadNode, StoredMeterData.nData);
 		//HeadNode->cal = StoredMeterData.caliberDp;
 		//HeadNode->status = StoredMeterData.meterStatus;
@@ -397,7 +538,17 @@ void int2bcd(uint32 *pBCD, uint32 *pInt, uint8 nDigit)
 	}
 }
 
-
+void bcd2int(uint8 *pBCD, uint32 *pInt, uint8 nDigit)
+{
+	unsigned char i = 0;
+	for(i=0; i<nDigit; i++)
+	{
+		*pInt *= 100;
+		*pInt += ((*pBCD & 0xf0) >> 4) * 10 + (*pBCD & 0x0f);
+		pBCD++;
+	}
+	
+}
 
 
 int main(int argc, char *argv[])
@@ -420,8 +571,25 @@ int main(int argc, char *argv[])
 		168, 180, 192, 204, 216, 228, 240, 252, 264, 276, 288, 312, 336,
 		360, 384, 408, 432, 456, 480, 504, 528, 552};
 	char resultmatch= 0;
+#if 0
+	uint8 bcd[4]={0x12, 0x34, 0x56, 0x78};
+    uint8 bcd1[4]={0x23, 0x45, 0x67, 0x89};
+    uint8 msg[12]= {0,};
+	uint8 *p = msg;
+    uint32 *temp = NULL;
+    temp = (uint32 *)p;
+    bcd2int(bcd, temp, 4);
+    printf("1 0x%02X%02X%02X%02X-%5ld-%02X%02X%02X%02X\n", bcd[0], bcd[1], bcd[2], bcd[3], *temp, msg[0], msg[1], msg[2], msg[3] );
+    
+    printf("2 0x%02X%02X%02X%02X-%5ld-%02X%02X%02X%02X\n", bcd1[0], bcd1[1], bcd1[2], bcd1[3], *temp, msg[4], msg[5], msg[6], msg[7] );
+	p+=4;
+    temp = (uint32 *)p;
+    bcd2int(bcd1, temp, 4);
+    printf("3 0x%02X%02X%02X%02X-%5ld-%02X%02X%02X%02X\n", bcd1[0], bcd1[1], bcd1[2], bcd1[3], *temp, msg[4], msg[5], msg[6], msg[7]);
 
-
+	printf("end\n");
+	#endif
+#if 0
 	for(i=0; i<553; i++)
 	{
 		//add meterdata
@@ -479,6 +647,7 @@ int main(int argc, char *argv[])
 	allClearMeterData(&HeadNode);
 	printList(HeadNode);
 
+#endif
 	#if 0 //function Test
 	//createMeterData(1);
 	addHeadMeterData(&HeadNode, 0);

@@ -217,7 +217,6 @@ static int isValidMeterValue(uint8 *p)
 
 void bcd2int(uint8 *pBCD, uint32 *pInt, uint8 nDigit)
 {
-	#if 1
 	unsigned char i = 0;
 	for(i=0; i<nDigit; i++)
 	{
@@ -225,19 +224,7 @@ void bcd2int(uint8 *pBCD, uint32 *pInt, uint8 nDigit)
 		*pInt += ((*pBCD & 0xf0) >> 4) * 10 + (*pBCD & 0x0f);
 		pBCD++;
 	}
-	#else
-	uint32 value = 0;
-	uint8 temp = 0;
-
-	for (int i = 0; i < nDigit; i++) {
-		value *= 100;
-		temp = *(pBCD + i);
-		temp = ((temp & 0xf0) >> 4) * 10 + (temp & 0x0f);
-		value += temp;
-	}
-
-	*pInt = value;
-	#endif
+	
 }
 void int2bcd(uint32 *pBCD, uint32 *pInt, uint8 nDigit)
 {
