@@ -5,6 +5,7 @@
 #define uint16 unsigned short
 #define uint8	unsigned char
 #define uint32 unsigned long
+#define uchar unsigned char
 
 #define YEAR_MIN 2017
 #define YEAR_MAX 2100
@@ -90,6 +91,21 @@ typedef union{
 	uint8 data_b8[2];
 } dataTrans2_t;
 
+typedef struct {
+	uchar interval;
+	uchar numData;
+	uchar refValuePos;
+} NbiotMeterDataHigh_t;
+
+#if 0
+typedef struct {
+	uchar interval;
+	uchar numData;
+	uchar refValuePos;
+	//uchar refValue[4];
+	uchar valueDiff[24][4];
+} NbiotMeterData1_t; //seoul protocol version 1.7
+#endif
 //gloval data
 MeterData *HeadNode = NULL;
 MeterStoredData_t StoredMeterData;
@@ -165,6 +181,25 @@ MeterData *findMeterData(MeterData* head, uint16 data) {
 		head = head->Next;
 	}
 	return NULL;
+}
+int findNumData(MeterData **head, uint8 div, uint16 *dataNum)
+{
+	MeterData *temp = *head;
+	uint16 *tempRet = dataNum;
+
+ 	int count = 0;
+
+	while(temp != NULL)
+	{
+		if((temp->num % div) == 0)
+		{
+			*tempRet = temp->num;
+			tempRet++;
+			count++;
+		}
+		temp = temp->Next;
+	}
+	return count;
 }
 
 char findRemoveData(MeterData **head, uint16 data)
@@ -487,11 +522,13 @@ void Unit2AddMeterData(MeterUnitData_t *pUnit)
 	saveFlag = CheckSaveMeterData(StoredMeterData.nData);
 	if(saveMeterTime(StoredMeterData.nData, now) ==1)
 	{
+		#if 0
 		printf("now Time : %2d-%2d-%2d %2d:%2d:%2d \n", now.year, now.mon, now.day,\
 		now.hour, now.min, now.sec);
 		printf("save Time : %2d-%2d-%2d %2d:%2d:%2d\n", meterSaveTime.year, \
 		meterSaveTime.mon, meterSaveTime.day, meterSaveTime.hour, meterSaveTime.min,\
 		meterSaveTime.sec );
+		#endif
 	}
 	if(saveFlag)
 	{
@@ -550,6 +587,148 @@ void bcd2int(uint8 *pBCD, uint32 *pInt, uint8 nDigit)
 	
 }
 
+static int insert_multiData(uchar *p, uint8 proto)
+{
+	uint8 i=0, datacnt =0;
+	uint32 prevValue = 0, nowValue = 0;
+	uint16 diff=0;
+
+	NbiotMeterDataHigh_t *temp_p = (NbiotMeterDataHigh_t *)p;
+	MeterData *tempMeterData;
+	uchar *temp_add = NULL;
+	uint32 *refValue = NULL;
+	uint16 findNum[24]={0,};
+	//uint32 *temp32 = NULL;
+
+	//interval meter mode
+	temp_p->interval = CAL_COUNT_TIME_UNIT(StoredMeterData.nData);
+	temp_p->numData = findNumData(&HeadNode, temp_p->interval, findNum);
+	
+	printf("interval = %d\n", temp_p->interval);
+	printf("data count = %d\n", temp_p->numData);
+	//loadData = (uint32 *)OSAL_malloc(sizeof(uint32) * p->numData);
+	if(proto == 0xA4)
+	{
+		temp_add = p + sizeof(NbiotMeterDataHigh_t);
+	}
+	else //if (proto == 0xA3)
+	{
+		refValue = p + sizeof(NbiotMeterDataHigh_t);
+		temp_add = refValue + 4;
+	}
+
+// Maxnum > 0
+	tempMeterData = findMeterData(HeadNode, findNum[datacnt++]);
+	if (METER_isAllFF(tempMeterData->meterData, 4) == FALSE) {
+		if (proto == 0xA4){
+			bcd2int(tempMeterData->meterData, (uint32 *)temp_add, 4);
+			temp_add += 4;
+		}
+		else //if(proto == 0xA3)
+		{
+			bcd2int(tempMeterData->meterData, refValue, 4);
+			memset(temp_add, 0x00, 2);
+			temp_add += 2;
+		}
+		temp_p->refValuePos = 0;
+	}
+	else
+	{
+		if (proto == 0xA4){
+			memset(temp_add, 0xFF, 4);
+			temp_add += 4;
+		}
+		else	// proto == 0xA3
+		{
+			memset(temp_add, 0xFF, 2);
+			temp_add += 2;
+		}
+		for(i=datacnt;  i<temp_p->numData; i++){
+			tempMeterData = findMeterData(HeadNode, findNum[datacnt++]);
+			if (METER_isAllFF(tempMeterData->meterData, 4)) {
+				// meter down
+				if (proto == 0xA4){
+					memset(temp_add, 0xFF, 4);
+					temp_add += 4;
+				}
+				else	// proto == 0xA3
+				{
+					memset(temp_add, 0xFF, 2);
+					temp_add += 2;
+				}
+			}
+			else
+				break;
+		}
+		temp_p->refValuePos = datacnt - 1;
+		if (proto == 0xA4){
+			bcd2int(tempMeterData->meterData, (uint32 *)temp_add, 4);
+			temp_add += 4;
+		}
+		else	// proto == 0xA3
+		{
+			bcd2int(tempMeterData->meterData, refValue, 4);
+			memset(temp_add, 0x00, 2);
+			temp_add += 2;
+		}
+	}
+	printf("ref pos :%d\n", temp_p->refValuePos);
+	for(i=datacnt; i<temp_p->numData; i++)
+	{
+		tempMeterData = findMeterData(HeadNode, findNum[datacnt++]);
+		if(METER_isAllFF(tempMeterData->meterData, 4))
+		{
+			if (proto == 0xA4){
+				memset(temp_add, 0xFF, 4);
+				temp_add += 4;
+			}
+			else	// proto == 0xA3
+			{
+				memset(temp_add, 0xFF, 2);
+				temp_add += 2;
+			}
+		}
+		else
+		{
+			if (proto == 0xA4){
+				bcd2int(tempMeterData->meterData, (uint32 *)temp_add, 4);
+				temp_add += 4;
+			}
+			else	// proto == 0xA3
+			{
+				nowValue = 0;
+				bcd2int(tempMeterData->meterData, &nowValue, 4);
+				if(prevValue < nowValue)
+				{
+					memset(p->valueDiff[i + 1], 0, 2);
+					printf("[%2d] pre : %8ld, now : %8ld\r\n", i, prevValue, nowValue);
+				}
+				else
+				{
+					diff = (prevValue - nowValue)>0xFFFE ? 0xFFFE : (uint16)(prevValue - nowValue);
+					prevValue = nowValue;
+					printf("%02d : %6d\r\n", i, diff);
+					memcpy(p->valueDiff[i+1], &diff, 2);
+				}
+			}
+			
+		}
+	}
+	p->numData++;
+	free(loadData);
+
+	printf("refVelue : %02x%02x%02x%03x\ndata count:%2d\n", p->refValue[0], p->refValue[1], p->refValue[2], p->refValue[3], p->numData);
+	printf("position : %d\n", p->refValuePos);
+	printf("diff data : \n");
+	for(i=0; i<p->numData; i++)
+	{
+		printf("%d: %02x%02x %3d\n",i , p->valueDiff[i][1] ,p->valueDiff[i][0] ,p->valueDiff[i][0]);
+	}
+	printf("\n");
+	//OSAL_free(loadData);
+	
+return 7 + (temp_p->numData * 2); // 7 = interval(1), nData(1), validPos(1), refValue(4)
+}
 
 int main(int argc, char *argv[])
 {
@@ -558,6 +737,9 @@ int main(int argc, char *argv[])
 	dataTrans2_t *Temp2Trans;
 	
 	MeterUnitData_t tempUnit;
+	MeterData *tempMeterData;
+	uint16 findNum[24]={0,};
+	int dataMaxNum =0;
 	uint32 meter_add = 0, temp_trans = 0;
 	int i =0, j;
 	uint32 temp2byte=0;
@@ -578,19 +760,21 @@ int main(int argc, char *argv[])
 	uint8 *p = msg;
     uint32 *temp = NULL;
     temp = (uint32 *)p;
-    bcd2int(bcd, temp, 4);
+    //bcd2int(bcd, temp, 4);
+	bcd2int(bcd, (uint32 *)p, 4);
     printf("1 0x%02X%02X%02X%02X-%5ld-%02X%02X%02X%02X\n", bcd[0], bcd[1], bcd[2], bcd[3], *temp, msg[0], msg[1], msg[2], msg[3] );
     
     printf("2 0x%02X%02X%02X%02X-%5ld-%02X%02X%02X%02X\n", bcd1[0], bcd1[1], bcd1[2], bcd1[3], *temp, msg[4], msg[5], msg[6], msg[7] );
 	p+=4;
     temp = (uint32 *)p;
-    bcd2int(bcd1, temp, 4);
+    //bcd2int(bcd1, temp, 4);
+	bcd2int(bcd1, (uint32 *)p, 4);
     printf("3 0x%02X%02X%02X%02X-%5ld-%02X%02X%02X%02X\n", bcd1[0], bcd1[1], bcd1[2], bcd1[3], *temp, msg[4], msg[5], msg[6], msg[7]);
 
 	printf("end\n");
 	#endif
-#if 0
-	for(i=0; i<553; i++)
+#if 1
+	for(i=0; i<24; i++)
 	{
 		//add meterdata
 		
@@ -644,6 +828,16 @@ int main(int argc, char *argv[])
 		}
 	}
 	printf("Result Match : %s\n", resultmatch == 0 ? "Success" : "Fail");
+	dataMaxNum = findNumData(&HeadNode, 2, findNum);
+	printf("find data = %d\n", dataMaxNum);
+	#if 1
+	for(i=0; i<dataMaxNum; i++)
+	{
+		tempMeterData = findMeterData(HeadNode, findNum[i]);
+		printf("%3d[%3d] : %02X%02X%02X%02X\n", i, tempMeterData->num, tempMeterData->meterData[0], \
+		tempMeterData->meterData[1], tempMeterData->meterData[2], tempMeterData->meterData[3]);
+	}
+	#endif
 	allClearMeterData(&HeadNode);
 	printList(HeadNode);
 
