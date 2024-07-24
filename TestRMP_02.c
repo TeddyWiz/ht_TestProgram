@@ -4,15 +4,16 @@
 
 #define uint16 unsigned short
 #define uint8	unsigned char
-#define uint32 unsigned long
+#define uint32 unsigned int
 #define uchar unsigned char
 
 #define YEAR_MIN 2017
 #define YEAR_MAX 2100
 
 #define TRUE 1
+#define FALSE 0
 
-#define CAL_COUNT_TIME_UNIT(x) 		(x<24? 1: x<48? 2: x<72? 3: x<96? 4: x<144? 6: x<288? 12: 24)
+#define CAL_COUNT_TIME_UNIT(x) 		(x<25? 1: x<49? 2: x<73? 3: x<97? 4: x<145? 6: x<289? 12: 24)
 
 //structure
 typedef struct MeterData{
@@ -97,6 +98,13 @@ typedef struct {
 	uchar refValuePos;
 } NbiotMeterDataHigh_t;
 
+typedef struct {
+	uint16 diff[24];
+} NbiotMeterDataV16_t;
+
+typedef struct {
+	uint32 Val[24];
+} NbiotMeterDataV17_t;
 #if 0
 typedef struct {
 	uchar interval;
@@ -578,6 +586,7 @@ void int2bcd(uint32 *pBCD, uint32 *pInt, uint8 nDigit)
 void bcd2int(uint8 *pBCD, uint32 *pInt, uint8 nDigit)
 {
 	unsigned char i = 0;
+	*pInt = 0;
 	for(i=0; i<nDigit; i++)
 	{
 		*pInt *= 100;
@@ -587,7 +596,20 @@ void bcd2int(uint8 *pBCD, uint32 *pInt, uint8 nDigit)
 	
 }
 
-static int insert_multiData(uchar *p, uint8 proto)
+uint8 METER_isAllFF(uchar *p, int len)
+{
+	uint8 result = TRUE;
+
+	for (int i = 0; i < len; i++) {
+		if (*(p + i) != 0xFF) {
+			result = FALSE;
+			break;
+		}
+	}
+	return result;
+}
+
+int insert_multiData(uchar *p, uint8 proto)
 {
 	uint8 i=0, datacnt =0;
 	uint32 prevValue = 0, nowValue = 0;
@@ -604,8 +626,8 @@ static int insert_multiData(uchar *p, uint8 proto)
 	temp_p->interval = CAL_COUNT_TIME_UNIT(StoredMeterData.nData);
 	temp_p->numData = findNumData(&HeadNode, temp_p->interval, findNum);
 	
-	printf("interval = %d\n", temp_p->interval);
-	printf("data count = %d\n", temp_p->numData);
+	//printf("interval = %d\n", temp_p->interval);
+	//printf("data count = %d\n", temp_p->numData);
 	//loadData = (uint32 *)OSAL_malloc(sizeof(uint32) * p->numData);
 	if(proto == 0xA4)
 	{
@@ -613,8 +635,8 @@ static int insert_multiData(uchar *p, uint8 proto)
 	}
 	else //if (proto == 0xA3)
 	{
-		refValue = p + sizeof(NbiotMeterDataHigh_t);
-		temp_add = refValue + 4;
+		refValue = (uint32 *)(p + sizeof(NbiotMeterDataHigh_t));
+		temp_add = p + sizeof(NbiotMeterDataHigh_t) + 4;
 	}
 
 // Maxnum > 0
@@ -626,7 +648,10 @@ static int insert_multiData(uchar *p, uint8 proto)
 		}
 		else //if(proto == 0xA3)
 		{
-			bcd2int(tempMeterData->meterData, refValue, 4);
+			bcd2int(tempMeterData->meterData, &prevValue, 4);
+			*refValue = prevValue; 
+			//printf("ref : %ld, %ld 0x%02X%02X%02X%02X\n", *refValue, prevValue, \
+			tempMeterData->meterData[0], tempMeterData->meterData[1], tempMeterData->meterData[2], tempMeterData->meterData[3]);
 			memset(temp_add, 0x00, 2);
 			temp_add += 2;
 		}
@@ -667,12 +692,13 @@ static int insert_multiData(uchar *p, uint8 proto)
 		}
 		else	// proto == 0xA3
 		{
-			bcd2int(tempMeterData->meterData, refValue, 4);
+			bcd2int(tempMeterData->meterData, &prevValue, 4);
+			*refValue = prevValue;
 			memset(temp_add, 0x00, 2);
 			temp_add += 2;
 		}
 	}
-	printf("ref pos :%d\n", temp_p->refValuePos);
+	//printf("ref pos :%d\n", temp_p->refValuePos);
 	for(i=datacnt; i<temp_p->numData; i++)
 	{
 		tempMeterData = findMeterData(HeadNode, findNum[datacnt++]);
@@ -700,34 +726,49 @@ static int insert_multiData(uchar *p, uint8 proto)
 				bcd2int(tempMeterData->meterData, &nowValue, 4);
 				if(prevValue < nowValue)
 				{
-					memset(p->valueDiff[i + 1], 0, 2);
-					printf("[%2d] pre : %8ld, now : %8ld\r\n", i, prevValue, nowValue);
+					memset(temp_add, 0, 2);
+					temp_add += 2;
+					//printf("[%2d] pre : %8ld, now : %8ld\r\n", i, prevValue, nowValue);
 				}
 				else
 				{
 					diff = (prevValue - nowValue)>0xFFFE ? 0xFFFE : (uint16)(prevValue - nowValue);
+					//printf("%02d : %6d | pre : %8ld, now : %8ld\r\n", i, diff, prevValue, nowValue);
 					prevValue = nowValue;
-					printf("%02d : %6d\r\n", i, diff);
-					memcpy(p->valueDiff[i+1], &diff, 2);
+					memcpy(temp_add, &diff, 2);
+					temp_add += 2;
 				}
 			}
 			
 		}
 	}
-	p->numData++;
-	free(loadData);
 
-	printf("refVelue : %02x%02x%02x%03x\ndata count:%2d\n", p->refValue[0], p->refValue[1], p->refValue[2], p->refValue[3], p->numData);
-	printf("position : %d\n", p->refValuePos);
-	printf("diff data : \n");
-	for(i=0; i<p->numData; i++)
+	printf("position : %d\n", temp_p->refValuePos);
+	printf("data count : %2d\n", temp_p->numData);
+	#if 0
+	if(proto==0xA3)
 	{
-		printf("%d: %02x%02x %3d\n",i , p->valueDiff[i][1] ,p->valueDiff[i][0] ,p->valueDiff[i][0]);
+		printf("refVelue : %08d\ndata count:%2d\n", *refValue, temp_p->numData);
+		printf("diff data : \n");
+		temp_add = refValue + 4;
+		for(i=0; i<temp_p->numData; i++)
+		{
+			printf("%d: %02x%02x\n", i,  );
+		}
+		printf("\n");
 	}
-	printf("\n");
-	//OSAL_free(loadData);
+	#endif
 	
-return 7 + (temp_p->numData * 2); // 7 = interval(1), nData(1), validPos(1), refValue(4)
+	//OSAL_free(loadData);
+	if(proto == 0xA4)
+	{
+		return 3 + (temp_p->numData * 4); // 3 = interval(1), nData(1), validPos(1)
+	}
+	else
+	{
+		return 7 + (temp_p->numData * 2); // 7 = interval(1), nData(1), validPos(1), refValue(4)
+	}
+
 }
 
 int main(int argc, char *argv[])
@@ -738,13 +779,20 @@ int main(int argc, char *argv[])
 	
 	MeterUnitData_t tempUnit;
 	MeterData *tempMeterData;
+	NbiotMeterDataHigh_t *tempmsgHigh;
+	NbiotMeterDataV16_t *tempmsg16;
+	NbiotMeterDataV17_t *tempmsg17;
+	uint32 *tempRefVal = NULL;
 	uint16 findNum[24]={0,};
 	int dataMaxNum =0;
 	uint32 meter_add = 0, temp_trans = 0;
-	int i =0, j;
+	int i =0, j=0;
 	uint32 temp2byte=0;
 	uint8 meteringData[4];
 	uint16 temp16buff;
+	uchar *buff = NULL;
+	uchar *sendBuff = NULL;
+	uint8 nowProto = 0xA4;
 	
 	int result[500] ={0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 
 		24, 26, 27, 28, 30, 32, 33, 34, 36, 38, 39, 40, 42, 44, 45, 46,
@@ -767,14 +815,15 @@ int main(int argc, char *argv[])
     printf("2 0x%02X%02X%02X%02X-%5ld-%02X%02X%02X%02X\n", bcd1[0], bcd1[1], bcd1[2], bcd1[3], *temp, msg[4], msg[5], msg[6], msg[7] );
 	p+=4;
     temp = (uint32 *)p;
-    //bcd2int(bcd1, temp, 4);
-	bcd2int(bcd1, (uint32 *)p, 4);
+    bcd2int(bcd1, temp, 4);
+	//bcd2int(bcd1, (uint32 *)p, 4);
     printf("3 0x%02X%02X%02X%02X-%5ld-%02X%02X%02X%02X\n", bcd1[0], bcd1[1], bcd1[2], bcd1[3], *temp, msg[4], msg[5], msg[6], msg[7]);
 
 	printf("end\n");
 	#endif
 #if 1
-	for(i=0; i<24; i++)
+	printf("protocol Version %02X\n", nowProto);
+	for(i=0; i<560; i++)
 	{
 		//add meterdata
 		
@@ -816,6 +865,50 @@ int main(int argc, char *argv[])
 		HeadNode->meterData[0], HeadNode->meterData[1], HeadNode->meterData[2], HeadNode->meterData[3],
 		HeadNode->pressure[1], HeadNode->temperature[1]);
 		#endif
+		
+		if(((i+1)%6)==0)
+		{
+			printf("===== Make message ====\n");
+			buff = (uchar *)malloc(256);
+			sendBuff = buff;
+			sendBuff +=insert_multiData(sendBuff, nowProto);
+			*sendBuff = 0xAE;
+			sendBuff++;
+			*sendBuff = 0xBC;
+			sendBuff++;
+			printf("message : ");
+			for(j=0; j<(int)(sendBuff-buff); j++)
+			{
+				printf("%02X ", buff[j]);
+			}
+			printf("\n");
+			tempmsgHigh = (NbiotMeterDataHigh_t *)buff;
+			printf("Interval : %d\n", tempmsgHigh->interval);
+			printf("numData : %d\n", tempmsgHigh->numData);
+			printf("refPos : %d\n", tempmsgHigh->refValuePos);
+			if(nowProto == 0xA4)
+			{
+				tempmsg17 = (NbiotMeterDataV17_t *)(buff + sizeof(NbiotMeterDataHigh_t));
+				for(j=0; j<tempmsgHigh->numData; j++)
+				{
+					printf("%4d : %8d[0x%08x]\n", j, (tempmsg17->Val[j]&0x00FFFFFFFF), (tempmsg17->Val[j]&0x00FFFFFFFF));
+				}
+			}
+			else	// 0xA3
+			{
+				
+				tempmsg16 = (NbiotMeterDataV16_t *)(buff + 4 + sizeof(NbiotMeterDataHigh_t));
+				tempRefVal = (uint32 *)(buff + sizeof(NbiotMeterDataHigh_t));
+				printf("refVal : %d[0x%08X]\n", (*tempRefVal & 0xFFFFFFFF), (*tempRefVal & 0xFFFFFFFF));
+				for(j=0; j<tempmsgHigh->numData; j++)
+				{
+					printf("%4d : %4d[0x%04x]\n", j, tempmsg16->diff[j], tempmsg16->diff[j]);
+				}
+			}
+
+			free(buff);
+			printf("===== End Message ====\n");
+		}
 	}
 	printMeterData(HeadNode);
 	printf("Result Check match\n");
