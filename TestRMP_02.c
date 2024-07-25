@@ -15,6 +15,10 @@
 
 #define CAL_COUNT_TIME_UNIT(x) 		(x<25? 1: x<49? 2: x<73? 3: x<97? 4: x<145? 6: x<289? 12: 24)
 
+#define MAXCOUNT 	7000
+//#define REPORT_VERSION 0xA4
+#define REPORT_VERSION 0xA3
+#define REPORT_TIME 6
 //structure
 typedef struct MeterData{
 	uint16 num;
@@ -120,6 +124,10 @@ MeterStoredData_t StoredMeterData;
 MeterTimeData_t meterPreTime;
 MeterTimeData_t meterSaveTime;
 
+
+int tempSaveNum[5001];
+int tempSaveindex=0;
+Date_t now={.year=2024, .mon=7, .day=22, .hour=0, .min=0, .sec=1};
 //Linked List Function
 // 새로운 노드 생성 함수
 MeterData *createMeterData(uint16 num) {
@@ -170,11 +178,15 @@ void allClearMeterData(MeterData **head)
 void RemoveLastMeterData(MeterData **head)
 {
 	MeterData *Temp = *head;
+	MeterData *pre = NULL;
 	while(Temp->Next != NULL)
 	{
+		pre = Temp;
 		Temp = Temp->Next;
 	}
+	printf("  Remove Last data = %d\n",Temp->num);
 	free(Temp);
+	pre->Next = NULL;
 }
 
 MeterData *findMeterData(MeterData* head, uint16 data) {
@@ -200,6 +212,12 @@ int findNumData(MeterData **head, uint8 div, uint16 *dataNum)
 
 	while(temp != NULL)
 	{
+		if((div == 24) &&(count > 23))
+		{
+			printf("over data remove\n");
+			RemoveLastMeterData(head);
+			break;
+		}
 		if((temp->num % div) == 0)
 		{
 			*tempRet = temp->num;
@@ -404,16 +422,17 @@ uint8 CheckSaveMeterData(uint16 num)
 		}
 		printf("\n");
 	}
-	else if(num<=552)
+	else if(num<577)
 	{
 		//nData%24 == 0 save
 		if((num%24)==0)
 			return 1;
 	}
-	else if(num>=31200) //1300*24
+	else if(num>=3000)//30000) //1300*24
 	{
 		saveFlag = 1;
-		StoredMeterData.nData = 576; //24*24
+		StoredMeterData.nData = 600; //24*24
+		RemoveLastMeterData(&HeadNode);
 	}
 	else	// over 552
 	{
@@ -421,6 +440,7 @@ uint8 CheckSaveMeterData(uint16 num)
 		if((num%24)==0)
 		{
 			//remove Last data
+			//printf("remove %d\n", num);
 			RemoveLastMeterData(&HeadNode);
 			return 1;
 		}	
@@ -519,9 +539,6 @@ int saveMeterTime(uint16 num, Date_t now)
 	return 0;
 }
 
-int tempSaveNum[500];
-int tempSaveindex=0;
-Date_t now={.year=2024, .mon=7, .day=22, .hour=0, .min=0, .sec=1};
 
 void Unit2AddMeterData(MeterUnitData_t *pUnit)
 {
@@ -550,10 +567,11 @@ void Unit2AddMeterData(MeterUnitData_t *pUnit)
 		}
 		#endif
 
-		tempSaveNum[tempSaveindex++] = StoredMeterData.nData;
+		//tempSaveNum[tempSaveindex++] = StoredMeterData.nData;
+		//if(StoredMeterData.nData != 576)
 		printf("s: ");
-		
 		addHeadMeterData(&HeadNode, StoredMeterData.nData);
+		
 		//HeadNode->cal = StoredMeterData.caliberDp;
 		//HeadNode->status = StoredMeterData.meterStatus;
 		memcpy(HeadNode->meterData, pUnit->meterData, sizeof(uint8)*4);
@@ -803,10 +821,10 @@ int main(int argc, char *argv[])
 	uint16 temp16buff;
 	uchar *buff = NULL;
 	uchar *sendBuff = NULL;
-	uint8 nowProto = 0xA4;
+	uint8 nowProto = REPORT_VERSION;
 	StoredMeterData.nData = 1;
 	uint16 temprval, pressval;
-	uint8 ReportTime = 6;
+	uint8 ReportTime = REPORT_TIME;
 	
 	int result[500] ={1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 
 		24, 26, 27, 28, 30, 32, 33, 34, 36, 38, 39, 40, 42, 44, 45, 46,
@@ -837,7 +855,7 @@ int main(int argc, char *argv[])
 	#endif
 #if 1
 	printf("protocol Version %02X / Report Time %2d\n", nowProto, ReportTime);
-	for(i=0; i<560; i++)
+	for(i=0; i<MAXCOUNT; i++)
 	{
 		//add meterdata
 		now.hour= (StoredMeterData.nData/60)%24;
@@ -861,6 +879,10 @@ int main(int argc, char *argv[])
 		temp2byte = 10 + (int)((rand()+i)%10);
 		pressval = temp2byte;
 		memcpy(tempUnit.pressure, &temp2byte, sizeof(uint8)*2);
+#if 1
+		if(i==3005)
+			printMeterData(HeadNode);
+			#endif
 
 		Unit2AddMeterData(&tempUnit);
 		memcpy(&temp16buff, HeadNode->pressure, sizeof(HeadNode->pressure));
@@ -870,7 +892,7 @@ int main(int argc, char *argv[])
 		HeadNode->meterData[0], HeadNode->meterData[1], HeadNode->meterData[2], HeadNode->meterData[3],
 		HeadNode->temperature[0], HeadNode->temperature[1],temp16buff);
 		#else
-		printf("%3d[%3d] : %2d/%2d %2d:%2d | %8d[%2d|%2d]\n", i, StoredMeterData.nData - 1, \
+		printf("%4d[%4d] : %2d/%2d %2d:%2d | %8d[%2d|%2d]\n", i, StoredMeterData.nData - 1, \
 		now.mon, now.day, now.hour, now.min,\
 		meter_add, temprval, pressval);
 		#endif
@@ -928,10 +950,11 @@ int main(int argc, char *argv[])
 				
 				tempmsg16 = (NbiotMeterDataV16_t *)(buff + 4 + sizeof(NbiotMeterDataHigh_t));
 				tempRefVal = (uint32 *)(buff + sizeof(NbiotMeterDataHigh_t));
-				printf("refVal : %d[0x%08X]\n", (*tempRefVal & 0xFFFFFFFF), (*tempRefVal & 0xFFFFFFFF));
+				printf("refVal : %8d[0x%08X]\n", (*tempRefVal & 0xFFFFFFFF), (*tempRefVal & 0xFFFFFFFF));
 				for(j=0; j<tempmsgHigh->numData; j++)
 				{
-					printf("%4d : %4d[0x%04x]\n", j, tempmsg16->diff[j], tempmsg16->diff[j]);
+					*tempRefVal -= tempmsg16->diff[j];
+					printf("%4d : %8d|%4d[0x%04x]\n", j, (*tempRefVal & 0xFFFFFFFF), tempmsg16->diff[j], tempmsg16->diff[j]);
 				}
 			}
 
@@ -940,6 +963,7 @@ int main(int argc, char *argv[])
 		}
 	}
 	printMeterData(HeadNode);
+	#if 0
 	printf("Result Check match\n");
 	for(i=0; i<tempSaveindex; i++)
 	{
@@ -959,6 +983,7 @@ int main(int argc, char *argv[])
 		printf("%3d[%3d] : %02X%02X%02X%02X\n", i, tempMeterData->num, tempMeterData->meterData[0], \
 		tempMeterData->meterData[1], tempMeterData->meterData[2], tempMeterData->meterData[3]);
 	}
+	#endif
 	#endif
 	allClearMeterData(&HeadNode);
 	printList(HeadNode);
