@@ -83,6 +83,7 @@ typedef struct {
 	uint8 hour;
 	uint8 min;
 	uint8 sec;
+	uint8 isTimeSync;
 } MeterTimeData_t;
 
 
@@ -163,6 +164,19 @@ char addHeadMeterData(MeterData** head, uint16 data) {
 	return 0;
 }
 
+#if 1
+void allClearMeterData(void)
+{
+	StoredMeterData.nData = 1;
+	MeterData *Temp;
+	while(HeadNode != NULL)
+	{
+		Temp = HeadNode;
+		HeadNode = Temp->Next;
+		free(Temp);
+	}
+}
+#else
 void allClearMeterData(MeterData **head)
 {
 	StoredMeterData.nData = 1;
@@ -174,6 +188,7 @@ void allClearMeterData(MeterData **head)
 		free(Temp);
 	}
 }
+#endif
 
 void RemoveLastMeterData(MeterData **head)
 {
@@ -189,20 +204,48 @@ void RemoveLastMeterData(MeterData **head)
 	pre->Next = NULL;
 }
 
-MeterData *findMeterData(MeterData* head, uint16 data) {
-	if(head == NULL)
+MeterData *findMeterData(uint16 data) {
+	MeterData *temp = HeadNode;
+	if(temp == NULL)
 		return NULL;
 	
-	while(head != NULL)
+	while(temp != NULL)
 	{
-		if(head->num == data)
+		if(temp->num == data)
 		{
-			return head;
+			return temp;
 		}
-		head = head->Next;
+		temp = temp->Next;
 	}
 	return NULL;
 }
+#if 1
+int findNumData(uint8 div, uint16 *dataNum)
+{
+	MeterData *temp = HeadNode;
+	uint16 *tempRet = dataNum;
+
+ 	int count = 0;
+
+	while(temp != NULL)
+	{
+		if((div == 24) &&(count > 23))
+		{
+			printf("over data remove\n");
+			RemoveLastMeterData(&temp);
+			break;
+		}
+		if((temp->num % div) == 0)
+		{
+			*tempRet = temp->num;
+			tempRet++;
+			count++;
+		}
+		temp = temp->Next;
+	}
+	return count;
+}
+#else
 int findNumData(MeterData **head, uint8 div, uint16 *dataNum)
 {
 	MeterData *temp = *head;
@@ -228,6 +271,7 @@ int findNumData(MeterData **head, uint8 div, uint16 *dataNum)
 	}
 	return count;
 }
+#endif
 
 char findRemoveData(MeterData **head, uint16 data)
 {
@@ -265,7 +309,22 @@ void printList(MeterData* head) {
     }
     printf("NULL\n");
 }
-
+#if 1
+void printMeterData(void){
+	int cnt = 0;
+    MeterData* temp = HeadNode;
+	uint16 temp16buff;
+	printf("==== print MeterData ====\n");
+    while (temp != NULL) {
+		memcpy(&temp16buff, temp->pressure, sizeof(temp->pressure));
+        printf("[%3d]%3d %02X%02X%02X%02X[%02X%02X|%2d]\n", cnt++, temp->num,   \
+		temp->meterData[0], temp->meterData[1],temp->meterData[2],temp->meterData[3],\
+		temp->temperature[0], temp->temperature[1], temp16buff );
+        temp = temp->Next;
+    }
+    //printf("NULL\n");
+}
+#else
 void printMeterData(MeterData* head){
 	int cnt = 0;
     MeterData* temp = head;
@@ -280,6 +339,7 @@ void printMeterData(MeterData* head){
     }
     //printf("NULL\n");
 }
+#endif
 
 uint8 CheckSaveMeterData(uint16 num)
 {
@@ -290,8 +350,7 @@ uint8 CheckSaveMeterData(uint16 num)
 	uint16 i;
 	if(num<25)
 		return 1;
-	else if(num==25)
-	{
+	else if(num==25){
 		//p1={1,5,7,11} + 12*n  remove
 		printf("Step 1: remove - ");
 		for(j=0; j<4; j++)
@@ -304,8 +363,7 @@ uint8 CheckSaveMeterData(uint16 num)
 		}
 		printf("\n");
 	}
-	else if(num<49)
-	{
+	else if(num<49){
 		//p1={1,5,7,11} + 12*n pass
 		saveFlag = 1;
 		for(j=0; j<4; j++)
@@ -316,8 +374,7 @@ uint8 CheckSaveMeterData(uint16 num)
 			}
 		}
 	}
-	else if(num==49)
-	{
+	else if(num==49){
 		//p2={2,10} + 12*n pass remove 4-6
 		printf("Step 2: remove - ");
 		for(j=4; j<6; j++)
@@ -330,8 +387,7 @@ uint8 CheckSaveMeterData(uint16 num)
 		}
 		printf("\n");
 	}
-	else if(num<73)
-	{
+	else if(num<73){
 		//p1 , p2 + 12*n pass 0-6 
 		saveFlag = 1;
 		for(j=0; j<6; j++)
@@ -342,8 +398,7 @@ uint8 CheckSaveMeterData(uint16 num)
 			}
 		}
 	}
-	else if(num==73)
-	{
+	else if(num==73){
 		//p3={3, 9} + 12*n remove 6-8
 		printf("Step 3: remove - ");
 		for(j=6; j<8; j++)
@@ -356,8 +411,7 @@ uint8 CheckSaveMeterData(uint16 num)
 		}
 		printf("\n");
 	}
-	else if(num<97)
-	{
+	else if(num<97){
 		//p4={4, 8}, p5=6 p6=12 + 12*n save 8-12
 		for(j=8; j<11; j++)
 		{
@@ -371,8 +425,7 @@ uint8 CheckSaveMeterData(uint16 num)
 			return 1;
 		}
 	}
-	else if(num==97)
-	{
+	else if(num==97){
 		//p4 + 12*n remove 8-10
 		printf("Step 4: remove - ");
 		
@@ -386,15 +439,13 @@ uint8 CheckSaveMeterData(uint16 num)
 		}
 		printf("\n");
 	}
-	else if(num<145)
-	{
+	else if(num<145){
 		//p5 p6 + 12*n save 10-12
 		if((num == (p1[10]+12*n))||(num == 12*n)){
 			return 1;
 		}
 	}
-	else if(num==145)
-	{
+	else if(num==145){
 		//p5 + 12*n remove 10
 		printf("Step 5: remove - ");
 		for(i=0; i<n; i++)
@@ -404,15 +455,13 @@ uint8 CheckSaveMeterData(uint16 num)
 		}
 		printf("\n");
 	}
-	else if(num<289)
-	{
+	else if(num<289){
 		//p6 + 12*n save
 		if(num == 12*n){
 			return 1;
 		}
 	}
-	else if(num==289)
-	{
+	else if(num==289){
 		//p6 + 12*n remove 11
 		printf("Step 6: remove - ");
 		for(i=0; i<n; i++)
@@ -422,13 +471,12 @@ uint8 CheckSaveMeterData(uint16 num)
 		}
 		printf("\n");
 	}
-	else if(num<577)
-	{
+	else if(num<577){
 		//nData%24 == 0 save
 		if((num%24)==0)
 			return 1;
 	}
-	else if(num>=3000)//30000) //1300*24
+	else if(num>=3000)//30000)
 	{
 		saveFlag = 1;
 		StoredMeterData.nData = 600; //24*24
@@ -477,7 +525,8 @@ int RTC_isValidDate(Date_t *date)
 	return valid;
 }
 
-void insertDateToData(Date_t *pDate, MeterTimeData_t *pData, uint8 isIgnoreSec)
+//void insertDateToData(Date_t *pDate, MeterTimeData_t *pData, uint8 isIgnoreSec)
+void insertDateToData(Date_t *pDate, MeterUnitData_t *pData, uint8 isIgnoreSec)
 {
 	if (RTC_isValidDate(pDate)) {
 		// Data의 year는 RTC의 year에서 2000을 빼서 사용
@@ -494,7 +543,7 @@ void insertDateToData(Date_t *pDate, MeterTimeData_t *pData, uint8 isIgnoreSec)
 int saveMeterTime(uint16 num, Date_t now)
 {
 	uint8 saveFlag = 0;
-	insertDateToData(&now, &meterPreTime, 0);
+	insertDateToData(&now, (MeterUnitData_t *)&meterPreTime, 0);
 	if(num < 24){
 		saveFlag = 1;
 	}
@@ -529,7 +578,7 @@ int saveMeterTime(uint16 num, Date_t now)
 		}
 	}
 	if(saveFlag){
-		insertDateToData(&now, &meterSaveTime, 0);
+		insertDateToData(&now, (MeterUnitData_t *)&meterSaveTime, 0);
 		return 1;
 	}
 	else{
@@ -642,12 +691,11 @@ int insert_multiData(uchar *p, uint8 proto)
 	uchar *temp_add = NULL;
 	uint32 *refValue = NULL;
 	uint16 findNum[24]={0,};
-	//uint32 *temp32 = NULL;
 
 	//interval meter mode
 	printf("nData count = %d\n", StoredMeterData.nData-1);
 	temp_p->interval = CAL_COUNT_TIME_UNIT(StoredMeterData.nData-1);
-	temp_p->numData = findNumData(&HeadNode, temp_p->interval, findNum);
+	temp_p->numData = findNumData(temp_p->interval, findNum);
 	printf("find data num = ");
 	for(i=0; i<temp_p->numData; i++)
 	{
@@ -655,9 +703,6 @@ int insert_multiData(uchar *p, uint8 proto)
 	}
 	printf("\n");
 	
-	//printf("interval = %d\n", temp_p->interval);
-	//printf("data count = %d\n", temp_p->numData);
-	//loadData = (uint32 *)OSAL_malloc(sizeof(uint32) * p->numData);
 	if(proto == 0xA4)
 	{
 		temp_add = p + sizeof(NbiotMeterDataHigh_t);
@@ -669,7 +714,7 @@ int insert_multiData(uchar *p, uint8 proto)
 	}
 
 // Maxnum > 0
-	tempMeterData = findMeterData(HeadNode, findNum[datacnt++]);
+	tempMeterData = findMeterData(findNum[datacnt++]);
 	if (METER_isAllFF(tempMeterData->meterData, 4) == FALSE) {
 		if (proto == 0xA4){
 			bcd2int(tempMeterData->meterData, (uint32 *)temp_add, 4);
@@ -679,8 +724,6 @@ int insert_multiData(uchar *p, uint8 proto)
 		{
 			bcd2int(tempMeterData->meterData, &prevValue, 4);
 			*refValue = prevValue; 
-			//printf("ref : %ld, %ld 0x%02X%02X%02X%02X\n", *refValue, prevValue, \
-			tempMeterData->meterData[0], tempMeterData->meterData[1], tempMeterData->meterData[2], tempMeterData->meterData[3]);
 			memset(temp_add, 0x00, 2);
 			temp_add += 2;
 		}
@@ -698,7 +741,7 @@ int insert_multiData(uchar *p, uint8 proto)
 			temp_add += 2;
 		}
 		for(i=datacnt;  i<temp_p->numData; i++){
-			tempMeterData = findMeterData(HeadNode, findNum[datacnt++]);
+			tempMeterData = findMeterData(findNum[datacnt++]);
 			if (METER_isAllFF(tempMeterData->meterData, 4)) {
 				// meter down
 				if (proto == 0xA4){
@@ -730,7 +773,7 @@ int insert_multiData(uchar *p, uint8 proto)
 	//printf("ref pos :%d\n", temp_p->refValuePos);
 	for(i=datacnt; i<temp_p->numData; i++)
 	{
-		tempMeterData = findMeterData(HeadNode, findNum[datacnt++]);
+		tempMeterData = findMeterData(findNum[datacnt++]);
 		if(METER_isAllFF(tempMeterData->meterData, 4))
 		{
 			if (proto == 0xA4){
@@ -858,10 +901,10 @@ int main(int argc, char *argv[])
 	for(i=0; i<MAXCOUNT; i++)
 	{
 		//add meterdata
-		now.hour= (StoredMeterData.nData/60)%24;
-		now.min = (StoredMeterData.nData%60);
-		now.day = 1+((StoredMeterData.nData/60)/24)%30;
-		now.mon = 1+(((StoredMeterData.nData/60)/24)/30)%12;
+		now.hour= ((i+1)/60)%24;
+		now.min = ((i+1)%60);
+		now.day = 1+(((i+1)/60)/24)%30;
+		now.mon = 1+((((i+1)/60)/24)/30)%12;
 		//addHeadMeterData(&HeadNode, i);
 		meter_add += (unsigned int)((rand()+i)%100);
 		temp_trans = 0;
@@ -879,9 +922,9 @@ int main(int argc, char *argv[])
 		temp2byte = 10 + (int)((rand()+i)%10);
 		pressval = temp2byte;
 		memcpy(tempUnit.pressure, &temp2byte, sizeof(uint8)*2);
-#if 1
+#if 0
 		if(i==3005)
-			printMeterData(HeadNode);
+			//printMeterData(HeadNode);
 			#endif
 
 		Unit2AddMeterData(&tempUnit);
@@ -962,7 +1005,8 @@ int main(int argc, char *argv[])
 			printf("===== End Message ====\n");
 		}
 	}
-	printMeterData(HeadNode);
+	//printMeterData(HeadNode);
+	printMeterData();
 	#if 0
 	printf("Result Check match\n");
 	for(i=0; i<tempSaveindex; i++)
@@ -985,7 +1029,8 @@ int main(int argc, char *argv[])
 	}
 	#endif
 	#endif
-	allClearMeterData(&HeadNode);
+	//allClearMeterData(&HeadNode);
+	allClearMeterData();
 	printList(HeadNode);
 
 #endif
