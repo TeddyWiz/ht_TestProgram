@@ -15,10 +15,10 @@
 
 #define CAL_COUNT_TIME_UNIT(x) 		(x<25? 1: x<49? 2: x<73? 3: x<97? 4: x<145? 6: x<289? 12: 24)
 
-#define MAXCOUNT 	7000
+#define MAXCOUNT 	70000//7000
 //#define REPORT_VERSION 0xA4
-#define REPORT_VERSION 0xA3
-#define REPORT_TIME 6
+#define REPORT_VERSION 0xA4
+#define REPORT_TIME 1
 //structure
 typedef struct MeterData{
 	uint16 num;
@@ -476,7 +476,7 @@ uint8 CheckSaveMeterData(uint16 num)
 		if((num%24)==0)
 			return 1;
 	}
-	else if(num>=3000)//30000)
+	else if(num>=30000)//30000)
 	{
 		saveFlag = 1;
 		StoredMeterData.nData = 600; //24*24
@@ -693,6 +693,7 @@ int insert_multiData(uchar *p, uint8 proto)
 	uint16 findNum[24]={0,};
 
 	//interval meter mode
+	printf("NbiotMeterDataHigh_t size = %d\n", (int)sizeof(NbiotMeterDataHigh_t));
 	printf("nData count = %d\n", StoredMeterData.nData-1);
 	temp_p->interval = CAL_COUNT_TIME_UNIT(StoredMeterData.nData-1);
 	temp_p->numData = findNumData(temp_p->interval, findNum);
@@ -712,12 +713,15 @@ int insert_multiData(uchar *p, uint8 proto)
 		refValue = (uint32 *)(p + sizeof(NbiotMeterDataHigh_t));
 		temp_add = p + sizeof(NbiotMeterDataHigh_t) + 4;
 	}
+	printf("high size = %d\n", (int)(temp_add - p));
 
 // Maxnum > 0
 	tempMeterData = findMeterData(findNum[datacnt++]);
 	if (METER_isAllFF(tempMeterData->meterData, 4) == FALSE) {
 		if (proto == 0xA4){
 			bcd2int(tempMeterData->meterData, (uint32 *)temp_add, 4);
+			printf("[%4d %02X%02X%02X%02X %8u]\n",tempMeterData->num ,tempMeterData->meterData[0],tempMeterData->meterData[1],tempMeterData->meterData[2],tempMeterData->meterData[3], *(uint32 *)temp_add);
+			printf("[%02X%02X%02X%02X]\n",*(temp_add),*(temp_add+1),*(temp_add+2),*(temp_add+3)); 
 			temp_add += 4;
 		}
 		else //if(proto == 0xA3)
@@ -858,7 +862,8 @@ int main(int argc, char *argv[])
 	uint16 findNum[24]={0,};
 	int dataMaxNum =0;
 	uint32 meter_add = 0, temp_trans = 0;
-	int i =0, j=0;
+	unsigned long i =0;
+	int j=0;
 	uint32 temp2byte=0;
 	uint8 meteringData[4];
 	uint16 temp16buff;
@@ -914,6 +919,7 @@ int main(int argc, char *argv[])
 		{
 			tempUnit.meterData[j] = meter_data.data_b8[3-j];
 		}
+		//printf("%4ld) %02X%02X%02X%02X - %8d\n",i ,tempUnit.meterData[0], tempUnit.meterData[1], tempUnit.meterData[2], tempUnit.meterData[3], meter_add);
 		temp2byte = 20 + (int)((rand()+i)%10);
 		temprval = temp2byte;
 		int2bcd(&temp_trans, &temp2byte, 4);
@@ -926,6 +932,26 @@ int main(int argc, char *argv[])
 		if(i==3005)
 			//printMeterData(HeadNode);
 			#endif
+		#if 0
+		if(((i+1)%23)==0)
+		{
+			memset(tempUnit.meterData,0xFF, sizeof(uint8)*4);
+			memset(tempUnit.pressure, 0xFF, sizeof(uint8)*2);
+			memset(tempUnit.temperature, 0xFF, sizeof(uint8)*2);
+		}
+		if(((i+1)%24)==0)
+		{
+			memset(tempUnit.meterData,0xFF, sizeof(uint8)*4);
+			memset(tempUnit.pressure, 0xFF, sizeof(uint8)*2);
+			memset(tempUnit.temperature, 0xFF, sizeof(uint8)*2);
+		}
+		if(((i+1)%30)==0)
+		{
+			memset(tempUnit.meterData,0xFF, sizeof(uint8)*4);
+			memset(tempUnit.pressure, 0xFF, sizeof(uint8)*2);
+			memset(tempUnit.temperature, 0xFF, sizeof(uint8)*2);
+		}
+		#endif
 
 		Unit2AddMeterData(&tempUnit);
 		memcpy(&temp16buff, HeadNode->pressure, sizeof(HeadNode->pressure));
@@ -935,7 +961,7 @@ int main(int argc, char *argv[])
 		HeadNode->meterData[0], HeadNode->meterData[1], HeadNode->meterData[2], HeadNode->meterData[3],
 		HeadNode->temperature[0], HeadNode->temperature[1],temp16buff);
 		#else
-		printf("%4d[%4d] : %2d/%2d %2d:%2d | %8d[%2d|%2d]\n", i, StoredMeterData.nData - 1, \
+		printf("%4ld[%4d] : %2d/%2d %2d:%2d | %8d[%2d|%2d]\n", i, StoredMeterData.nData - 1, \
 		now.mon, now.day, now.hour, now.min,\
 		meter_add, temprval, pressval);
 		#endif
@@ -970,7 +996,7 @@ int main(int argc, char *argv[])
 			printf("message : ");
 			for(j=0; j<(int)(sendBuff-buff); j++)
 			{
-				printf("%02X ", buff[j]);
+				printf("%02X", buff[j]);
 			}
 			printf("\n");
 			tempmsgHigh = (NbiotMeterDataHigh_t *)buff;

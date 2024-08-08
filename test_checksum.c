@@ -37,13 +37,26 @@ int main(int argc, char *argv[])
 {
     //char test_msg[]="a36970869692060814435f450061243599720f3400dd003c000b000600231460000105312312121212011300010618061b0d0000061800921700000000de00dd00dd00dd00dd00de00dd00dd00dd00dd00de00da00e000dd00dd00de00dd00dd00dd00dd00de00dd00dd00ca";
     //char test_msg[]="A33B70866416049616841F450061235190642F4300BF004A000A0013002323100001053024000000000100000101FFFFFF0000000101FFFFFFFFFFFFFF14";
-    char test_msg[]="A33B70866416049616841F450061235190642F4700BF004E000A000F00232310000105302400000000010000010118061B110000010100A921EF09FFFF2C";
+    //char test_msg[]="A44770866416049618615F450061226099934F4500BF0000004B000A001900232310000205312424600000011300010118071D0E260001040044FC2E0020FC2E00FBFB2E00D7FB2E0094";
+    char test_msg[2048];
     int i=0;
     int datalen =0;
-    char conv_hex[109];
+    char conv_hex[2048];
     char result=0;
+    int msg_len = 0;
+    if(argc!=2)
+    {
+        printf("not match parameter %d\n", argc);
+        printf("%d, %s\n", 1, argv[1]);
+        printf("%d, %s\n", 2, argv[2]);
+        return -1;
+    }
+    memset(test_msg, 0, sizeof(test_msg));
+    strcpy(test_msg, argv[1]);
+    msg_len = (int)strlen(test_msg);
     printf("ori[%d]:%s\r\n",(int)strlen(test_msg), test_msg);
-    for(i=0; i<(strlen(test_msg)/2); i++)
+    printf("ori[%d]:%s\r\n",(int)strlen(argv[1]), argv[1]);
+    for(i=0; i<(msg_len/2); i++)
     {
         conv_hex[i]=_ascii2BCD(test_msg[i*2], test_msg[i*2+1]);
     }
@@ -53,11 +66,11 @@ int main(int argc, char *argv[])
         printf("%02X",(conv_hex[i]&0x000000FF));
     }
     printf("\n");
-    datalen = conv_hex[1];
+    datalen = (int)(conv_hex[1]&0x000000ff);
     printf("data len=%d\r\n", datalen);
     result = cal_checksum(conv_hex+2, datalen);
     //result = cal_checksum(conv_hex+2, 108-5);
-    printf("result=%02X\r\n", (result&0x000000ff));
+    printf("result=%02X , %c%c\r\n", (result&0x000000ff), test_msg[msg_len -2], test_msg[msg_len -1]);
 
     return 0;
 }
