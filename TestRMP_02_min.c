@@ -340,7 +340,7 @@ void printMeterData(MeterData* head){
     //printf("NULL\n");
 }
 #endif
-#if 1
+#if 0
 uint8 CheckSaveMeterData(uint16 num)
 {
 	uint8 saveFlag = 0;
@@ -503,7 +503,8 @@ uint8 CheckSaveMeterData(uint16 num)
     uint16 noConnectDay;
     uint8 currentInterval;
     uint8 NextInterval;
-    
+    uint8 perviousInterval;
+
     noConnectDay = (refCnt-1)/24;
 
     //1. currentInterval, NextInterval 계산
@@ -511,42 +512,55 @@ uint8 CheckSaveMeterData(uint16 num)
         case 0 : 
                 currentInterval = 1;
                 NextInterval = 1;
+				perviousInterval = 1;
             break;
         case 1 : 
                 currentInterval =2;
                 NextInterval =3;
+				perviousInterval = 1;
             break;
         case 2 : 
                 currentInterval = 3;
                 NextInterval = 4;
+				perviousInterval = 2;
             break;
         case 3 : 
                 currentInterval = 4;
                 NextInterval = 6;
+				perviousInterval = 3;
             break;
         case 4 : 
                 currentInterval = 6;
                 NextInterval = 6;
+				perviousInterval = 4;
             break;
         case 5 : 
                 currentInterval = 6;
-                NextInterval = 12;
+                NextInterval = 6;
+				perviousInterval = 6;
             break;
-        case 6 : 
+        case 6 :  
+				currentInterval = 12;
+                NextInterval = 12;
+				perviousInterval = 6;
+			break;
         case 7 : 
         case 8 : 
         case 9 : 
         case 10 : 
-                currentInterval = 12;
+               	currentInterval = 12;
                 NextInterval = 12;
+				perviousInterval = 12;
             break;
         case 11:  
                 currentInterval = 12;
                 NextInterval = 24;
+				perviousInterval = 12;
             break;
         default :  
                 currentInterval = 24;
                 NextInterval = 24;
+				perviousInterval = 12;
             break;
     }
 
@@ -557,24 +571,31 @@ uint8 CheckSaveMeterData(uint16 num)
         saveflag = 0;
     }
 
-    //3. 24시간 주기로 삭제 데이터 판단
-    if ((refCnt % 24) == 1) {
+    //3. 저장 주기가 변경 되면서 12일 이하인 시점에서 삭제 데이터 판단
+   if (((refCnt % 24) == 1) && (noConnectDay <= 12) && (currentInterval != perviousInterval)) {
 		printf("remove : ");
         for (int i = refCnt; i>0; i--) {
-            if((i % currentInterval) && (i % NextInterval)) {
-				printf("%d ", i);
-                findRemoveData(&HeadNode, i);
-            }    
+			if ((i % perviousInterval) == 0) {
+
+				if((i % currentInterval) && (i % NextInterval)) {
+					printf("%d ", i);
+					findRemoveData(&HeadNode, i);
+				}    
+			}
         }
 		printf("\n");
     }
 
     //4. 24일을 넘겼으면서 데이터를 저장해야 할때 한개씩 삭제 
     if (saveflag && (noConnectDay >= 24)) {
-		printf("remove Last data\n");
+		//printf("remove Last data\n");
         RemoveLastMeterData(&HeadNode);
     }
 
+	//4-1. 24일 이상 데이터가 쌓이는 상황에서 StoredMeterData.nData 오버플로 방지
+	if ((currentInterval == 24) && saveflag && (num == 0xfff0)) {
+		StoredMeterData.nData = 576;
+	}
     return saveflag;
 }
 #endif
