@@ -188,10 +188,26 @@ int main() {
                     FD_CLR(sd, &read_fds);
                 } else {
                     buffer[bytes_read] = '\0';
-                    char recv_copy[BUFFER_SIZE];
-                    strncpy(recv_copy, buffer, BUFFER_SIZE);
-                    recv_copy[BUFFER_SIZE - 1] = '\0';
-                    write_log("Received from %d: %s\n", sd, recv_copy);
+                     if((0x000000FF&buffer[0])==0xC1)
+                    {
+                        char recv_copy[BUFFER_SIZE*2]={0,};
+                        int bytes_index = 0;
+                        for(int j=0; j<bytes_read ; j++)
+                        {
+                                bytes_index += sprintf(recv_copy+bytes_index,"%02x",(0x000000FF&buffer[j]));
+                        }
+                        recv_copy[bytes_index] = '\0';
+                        write_log("Receive from %d HEX[%d] : %s\n",sd,bytes_index,recv_copy);
+
+                    }
+                    else
+                    {
+                        char recv_copy[BUFFER_SIZE];
+                        strncpy(recv_copy, buffer, BUFFER_SIZE);
+                        recv_copy[BUFFER_SIZE - 1] = '\0';
+                        write_log("Received from %d: %s\n", sd, recv_copy);
+                    }
+                }
                 }
             }
         }
